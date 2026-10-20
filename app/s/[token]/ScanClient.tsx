@@ -9,9 +9,12 @@ interface ScanResult {
   code?: string;
   message?: string;
   already?: boolean;
+  kind?: 'r2' | 'r3';
   run?: number;
   piece_no?: number;
   qr_name?: string;
+  zone?: number;
+  zone_name?: string;
   n?: number;
 }
 
@@ -79,21 +82,36 @@ export default function ScanClient({ token }: { token: string }) {
               ✓
             </div>
             <span className="px-2.5 py-0.5 text-xs font-bold uppercase rounded bg-emerald-500/20 text-emerald-400">
-              {result.already ? 'Already Registered' : 'Registration Confirmed'}
+              {result.already ? (result.kind === 'r3' ? 'Already Scanned' : 'Already Registered') : 'Verified'}
             </span>
-            <h2 className="text-xl font-extrabold text-slate-100 mt-3">{result.qr_name}</h2>
-            <p className="text-sm text-slate-300 mt-2 font-medium">
-              Registered at <span className="text-accent font-bold">{result.qr_name}</span>.
-              <br />
-              You are piece <span className="text-accent font-bold">{result.piece_no}</span> of{' '}
-              <span className="text-accent font-bold">{result.n}</span>.
-            </p>
+            {result.kind === 'r3' ? (
+              <div className="mt-3">
+                <h2 className="text-xl font-extrabold text-slate-100">
+                  {result.already ? 'Location Verified' : 'Location Verified!'}
+                </h2>
+                <p className="text-sm text-slate-300 mt-2 font-medium">
+                  {result.already
+                    ? 'You already scanned here.'
+                    : 'Location verified. Your riddles are unlocked.'}
+                </p>
+              </div>
+            ) : (
+              <div className="mt-3">
+                <h2 className="text-xl font-extrabold text-slate-100">{result.qr_name}</h2>
+                <p className="text-sm text-slate-300 mt-2 font-medium">
+                  Registered at <span className="text-accent font-bold">{result.qr_name}</span>.
+                  <br />
+                  You are piece <span className="text-accent font-bold">{result.piece_no}</span> of{' '}
+                  <span className="text-accent font-bold">{result.n}</span>.
+                </p>
+              </div>
+            )}
             <div className="mt-8">
               <Link
                 href="/"
                 className="block w-full py-3.5 px-4 rounded-xl bg-accent hover:bg-accentHover text-slate-950 font-bold text-sm tracking-wide transition-colors shadow-lg"
               >
-                Go to Home Screen
+                Go to Team Hunt Screen
               </Link>
             </div>
           </div>

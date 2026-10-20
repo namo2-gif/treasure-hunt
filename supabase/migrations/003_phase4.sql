@@ -329,7 +329,7 @@ declare
   v_state record;
   v_student record;
   v_team record;
-  v_run record;
+  v_run team_run%rowtype;
   v_has_run boolean := false;
   v_now bigint;
   v_pieces int := 0;

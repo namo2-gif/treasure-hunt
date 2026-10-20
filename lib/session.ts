@@ -44,11 +44,11 @@ export async function signAdminToken(aid: number): Promise<string> {
     .sign(getAdminSecret());
 }
 
-export async function verifyAdminToken(token: string): Promise<{ aid: number } | null> {
+export async function verifyAdminToken(token: string): Promise<{ aid: number; adminId: number } | null> {
   try {
     const { payload } = await jwtVerify(token, getAdminSecret());
     if (typeof payload.aid === 'number') {
-      return { aid: payload.aid };
+      return { aid: payload.aid, adminId: payload.aid };
     }
     return null;
   } catch {
@@ -63,7 +63,7 @@ export async function getPlayerSession(): Promise<{ sid: string } | null> {
   return verifyPlayerToken(token);
 }
 
-export async function getAdminSession(): Promise<{ aid: number } | null> {
+export async function getAdminSession(): Promise<{ aid: number; adminId: number } | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_COOKIE_NAME)?.value;
   if (!token) return null;

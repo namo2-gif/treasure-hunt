@@ -28,7 +28,7 @@ describe('buildState screen selection (Section 8.1)', () => {
     expect(buildState(notIn).screen).toBe('R2_SPECTATOR');
     expect(buildState({ ...notIn, phase: 'r2_break' }).screen).toBe('R2_SPECTATOR');
     expect(buildState(raw({ phase: 'r3_open' })).screen).toBe('R3_SPECTATOR');
-    expect(buildState(raw({ phase: 'r3_open', team: { ...raw().team, r3Eligible: true } })).screen).toBe('R3');
+    expect(buildState(raw({ phase: 'r3_open', team: { ...raw().team, r3Eligible: true } })).screen).toBe('R3_FIND');
   });
   it('R2_DONE when run finished, expired or missing', () => {
     expect(buildState(raw({ run: { ...raw().run!, finished: true } })).screen).toBe('R2_DONE');

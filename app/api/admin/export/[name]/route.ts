@@ -132,5 +132,92 @@ export async function GET(
     });
   }
 
+  if (name === 'r3') {
+    // CSV: team, zone, scan_time, scanned_by, box1_time .. box4_time, wrong_values_per_box, milestones, rank
+    const [{ data: r3Teams }, { data: boxes }, { data: attempts }, { data: standings }] = await Promise.all([
+      db.from('r3_team').select('team_id, zone, scanned_at, scanned_ms, scanned_by, r3_zones(name)').order('team_id'),
+      db.from('r3_boxes').select('team_id, box, solved_at, solved_ms, credited').order('box'),
+      db.from('r3_attempts').select('team_id, box, value, correct, created_at').order('created_ms'),
+      db.from('r3_standings').select('team_id, milestones, last_seq'),
+    ]);
+
+    // Rank standings by milestones desc, last_seq asc nulls last, team_id
+    const sortedStandings = [...(standings || [])].sort((a, b) => {
+      if (b.milestones !== a.milestones) return b.milestones - a.milestones;
+      const aSeq = a.last_seq ?? Number.MAX_SAFE_INTEGER;
+      const bSeq = b.last_seq ?? Number.MAX_SAFE_INTEGER;
+      if (aSeq !== bSeq) return aSeq - bSeq;
+      return a.team_id.localeCompare(b.team_id);
+    });
+
+    const rankMap: Record<string, { rank: number; milestones: number }> = {};
+    sortedStandings.forEach((s, idx) => {
+      rankMap[s.team_id] = { rank: idx + 1, milestones: s.milestones };
+    });
+
+    const rows = (r3Teams || []).map((t: any) => {
+      const teamBoxes = (boxes || []).filter((b: any) => b.team_id === t.team_id);
+      const teamAttempts = (attempts || []).filter((a: any) => a.team_id === t.team_id);
+
+      const boxTimes: (string | null)[] = [null, null, null, null];
+      for (let b = 1; b <= 4; b++) {
+        const found = teamBoxes.find((tb: any) => tb.box === b);
+        if (found && found.solved_at) {
+          boxTimes[b - 1] = found.solved_at;
+        }
+      }
+
+      // wrong_values_per_box: e.g. "b1:X; b2:Y,Z"
+      const wrongByBox: string[] = [];
+      for (let b = 1; b <= 4; b++) {
+        const wrongs = teamAttempts
+          .filter((a: any) => a.box === b && !a.correct)
+          .map((a: any) => a.value);
+        if (wrongs.length > 0) {
+          wrongByBox.push(`box${b}:[${wrongs.join(';')}]`);
+        }
+      }
+
+      const st = rankMap[t.team_id];
+      return [
+        t.team_id,
+        t.r3_zones?.name ?? (t.zone ? `Zone ${t.zone}` : ''),
+        t.scanned_at ?? '',
+        t.scanned_by ?? '',
+        boxTimes[0] ?? '',
+        boxTimes[1] ?? '',
+        boxTimes[2] ?? '',
+        boxTimes[3] ?? '',
+        wrongByBox.join(' | '),
+        st?.milestones ?? 0,
+        st?.rank ?? '',
+      ];
+    });
+
+    const csv = toCSV(
+      [
+        'team',
+        'zone',
+        'scan_time',
+        'scanned_by',
+        'box1_time',
+        'box2_time',
+        'box3_time',
+        'box4_time',
+        'wrong_values_per_box',
+        'milestones',
+        'rank',
+      ],
+      rows
+    );
+
+    return new NextResponse(csv, {
+      headers: {
+        'Content-Type': 'text/csv',
+        'Content-Disposition': 'attachment; filename="round3.csv"',
+      },
+    });
+  }
+
   return NextResponse.json({ ok: false, code: 'NOT_FOUND', message: `Unknown export: ${name}` }, { status: 404 });
 }

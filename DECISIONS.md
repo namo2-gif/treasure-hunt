@@ -34,3 +34,90 @@
 - Phase 8: `claim_round3` enforces phase `r3_open`, checks `r3_eligible` team flag under lock, throttles wrong passwords per `password_max_wrong` and `password_lockout_s`, and guarantees exactly one winner via `insert into round3_claim (id, ...) values (1, ...) on conflict (id) do nothing`.
 - Phase 8: Winner screen prominently displays team ID, winning room number, and secret key info; non-winners receive `ALREADY_CLAIMED` screen; spectators outside top 5 remain on spectator view.
 - Phase 8: Admin panel features dedicated `/hq/round3` page with live winner banner enabling room organisers to verify team ID at the door against the database record.
+- Phase 9: Hardening test suite (`tests/phase9_hardening.test.ts`) tests seeded shuffle determinism across distinct teams, point calculations for N in [3, 4, 5], question status transitions, rank tie-breaks, security sanitisation (no leaked keys or rooms), and Section 2.7 string normalisations. All 69 vitest unit tests passing.
+- Phase 9: Load testing harness (`scripts/load-test.ts`) simulates 150 simultaneous participants polling `/api/state` with random jitter, tracking RPS, zero 5xx assertions, and p95 latency.
+- Phase 9: Complete operations guide and one-page outage recovery policy documented in `README.md`.
+- Phase 10 files touched:
+  - supabase/migrations/005_phase10_fixes.sql (Part A fixes, drop go_live, event_clock)
+  - supabase/migrations/006_round3.sql (Part B Round 3 tables, r3_config, r3_zones, r3_riddles, r3_team, r3_boxes, r3_attempts, r3_result, atomic functions)
+  - lib/event-service.ts (remove go-live, update open-r3, server clock integration, reset event action)
+  - lib/messages.ts (remove old R3 password codes, add R3 box codes)
+  - lib/dto.ts (remove old R3 mapper, add R3_FIND, R3_BOXES, R3_SPECTATOR, ENDED DTOs)
+  - lib/state.ts (map player state for new R3 screens and break countdown)
+  - lib/game-service.ts (update player_state and add r3_submit_box wrapper)
+  - app/api/scan/route.ts (dispatch to scan_dispatch)
+  - app/api/r3/answer/route.ts (new route for R3 box submissions)
+  - app/api/admin/event/[action]/route.ts (remove go-live, update open-r3 force handling)
+  - app/api/admin/event/open-r3/route.ts (dedicated open-r3 route)
+  - app/api/admin/dashboard/route.ts (responsive, R2 scores, R3 live grid payload, remove mode)
+  - app/api/admin/settings/route.ts (update locked settings for r3_minutes, r3_tries_per_box)
+  - app/api/admin/standings/route.ts (new standings API for R1 & R2)
+  - app/api/admin/round3/* (config, zones, riddles, eligible, assign-zone, randomize, override, export)
+  - app/api/admin/export/[type]/route.ts (add r3 export)
+  - app/hq/page.tsx (remove go live and reset button from dashboard, responsive layout, break clock & Start Round 3 button)
+  - app/hq/standings/page.tsx (new page for R1 & R2 standings)
+  - app/hq/settings/page.tsx (fix mobile overflow, responsive cards)
+  - app/hq/round3/page.tsx (new Round 3 setup, teams, live grid, overrides)
+  - app/hq/round3/qr-sheet/page.tsx (printable start QRs for 5 zones)
+  - components/Game.tsx (update player screens for R3_FIND, R3_BOXES, R3_SPECTATOR, ENDED, break clock)
+  - scripts/seed.ts (new Round 3 seed data)
+  - scripts/r3-simulate.ts (Round 3 simulation script)
+  - scripts/admin-smoke.ts (admin smoke tests)
+  - scripts/load-test.ts (update load test for R3 screens)
+  - tests/sql/phase10_round3.sql (SQL test cases for Phase 10)
+  - ADMIN_AUDIT.md (audit table of all admin controls and routes)
+  - CODEMAP.md (rebuilt and updated)
+- Phase 11 files touched:
+  - scripts/db-check.ts
+  - supabase/migrations/007_phase11.sql
+  - supabase/RUN_THIS_IN_SQL_EDITOR.sql
+  - middleware.ts
+  - lib/with-admin.ts
+  - lib/admin-fetch.ts
+  - app/api/admin/[...unknown]/route.ts
+  - app/api/admin/content/riddles/route.ts
+  - app/api/admin/content/riddles/[id]/route.ts
+  - app/api/admin/content/questions/route.ts
+  - app/api/admin/content/questions/[id]/route.ts
+  - app/api/admin/content/teasers/route.ts
+  - app/api/admin/content/teasers/[id]/route.ts
+  - app/api/admin/content/route.ts
+  - app/layout.tsx
+  - app/globals.css
+  - app/(player)/layout.tsx
+  - app/hq/layout.tsx
+  - components/hq/Shell.tsx
+  - components/hq/ResponsiveTable.tsx
+  - components/hq/Pager.tsx
+  - components/hq/ErrorBanner.tsx
+  - app/api/admin/dashboard/route.ts
+  - app/hq/page.tsx
+  - lib/messages.ts
+  - lib/dto.ts
+  - lib/state.ts
+  - app/api/answer/route.ts
+  - components/Game.tsx
+  - app/hq/settings/page.tsx
+  - app/api/admin/event/[action]/route.ts
+  - app/api/admin/standings/route.ts
+  - app/api/admin/export/[type]/route.ts
+  - app/hq/selection/page.tsx
+  - app/hq/standings/page.tsx
+  - app/api/admin/teams/route.ts
+  - app/api/admin/students/route.ts
+  - app/api/admin/log/route.ts
+  - app/api/admin/round3/teams/route.ts
+  - app/hq/teams/page.tsx
+  - app/hq/interventions/page.tsx
+  - app/hq/log/page.tsx
+  - app/hq/qr/page.tsx
+  - app/hq/round3/page.tsx
+  - scripts/seed.ts
+  - scripts/load-test.ts
+  - tests/sql/phase11.sql
+  - scripts/admin-smoke.ts
+  - DECISIONS.md
+  - CODEMAP.md
+  - ADMIN_AUDIT.md
+
+

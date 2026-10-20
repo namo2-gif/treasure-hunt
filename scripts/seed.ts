@@ -38,7 +38,9 @@ async function main() {
   await supabase.from('piece_assignments').delete().neq('run', 0);
   await supabase.from('team_questions').delete().neq('run', 0);
   await supabase.from('team_run').delete().neq('run', 0);
-  await supabase.from('round3_claim').delete().neq('id', 0);
+  await supabase.from('r3_boxes').delete().neq('box', 0);
+  await supabase.from('r3_result').delete().neq('id', 0);
+  await supabase.from('r3_team').delete().neq('team_id', '');
   await supabase.from('questions').delete().neq('id', 0);
   await supabase.from('teaser_puzzles').delete().neq('id', 0);
   await supabase.from('riddles').delete().neq('id', 0);
@@ -188,19 +190,40 @@ async function main() {
   if (questionErr) throw new Error(`Failed to insert questions: ${questionErr.message}`);
   console.log(`Inserted ${questionRows.length} questions.`);
 
-  // 7. Update Round 3 (sample clue, password, key and room)
-  console.log('Updating Round 3 row...');
-  const { error: r3Err } = await supabase
-    .from('round3')
-    .update({
-      clue_text: '[PLACEHOLDER] Enciphered Clue: KHOOR ZRUOG. Solve the shift to unlock the chamber.',
-      password_norm: 'placeholder victory',
-      key_info: '[PLACEHOLDER] Key Info: Shift cipher by 3 letters.',
-      room: '[PLACEHOLDER] Room 404 - Main Auditorium',
-    })
-    .eq('id', 1);
+  // 7. Update Round 3 (config, 5 zones, 20 riddles)
+  console.log('Seeding Round 3 configuration, zones, and riddles...');
+  const { error: r3CfgErr } = await supabase
+    .from('r3_config')
+    .upsert({
+      id: 1,
+      code: '1DAI',
+      hint_text: '[PLACEHOLDER] Shift cipher hint',
+    });
+  if (r3CfgErr) throw new Error(`Failed to update Round 3 config: ${r3CfgErr.message}`);
 
-  if (r3Err) throw new Error(`Failed to update Round 3: ${r3Err.message}`);
+  for (let z = 1; z <= 5; z++) {
+    const { error: zErr } = await supabase.from('r3_zones').upsert({
+      id: z,
+      name: `[PLACEHOLDER] Zone ${z}`,
+      token: crypto.randomBytes(16).toString('base64url'),
+      find_riddle: `[PLACEHOLDER] Zone ${z} start riddle pointing to start QR`,
+    });
+    if (zErr) throw new Error(`Failed to update zone ${z}: ${zErr.message}`);
+  }
+
+  const r3RiddleRows = [];
+  for (let z = 1; z <= 5; z++) {
+    for (let b = 1; b <= 4; b++) {
+      r3RiddleRows.push({
+        zone: z,
+        box: b,
+        text: `[PLACEHOLDER] Zone ${z} box ${b} riddle`,
+      });
+    }
+  }
+  const { error: riddlesErr } = await supabase.from('r3_riddles').upsert(r3RiddleRows);
+  if (riddlesErr) throw new Error(`Failed to update Round 3 riddles: ${riddlesErr.message}`);
+
   console.log('Updated Round 3 data.');
 
   console.log('Seed completed successfully!');

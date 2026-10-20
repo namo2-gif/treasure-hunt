@@ -10,7 +10,8 @@ export type ScreenType =
   | 'R2_QUESTIONS'
   | 'R2_DONE'
   | 'R2_BREAK'
-  | 'R3'
+  | 'R3_FIND'
+  | 'R3_BOXES'
   | 'R3_SPECTATOR'
   | 'ENDED';
 
@@ -62,6 +63,21 @@ export interface CaptainBoardQuestionDTO {
   status: QuestionStatus;
 }
 
+export interface R3BoxDTO {
+  box: number;
+  riddle: string;
+  kind: 'digit' | 'letter';
+  status: 'open' | 'one_try_left' | 'solved' | 'locked';
+}
+
+export interface R3EndedResultDTO {
+  reason: 'code' | 'progress' | 'admin' | 'none';
+  winnerTeamName?: string;
+  youWon: boolean;
+  teamId?: string; // winning team ID, sent ONLY to the winning team
+  milestones?: number; // sent only when reason = 'progress'
+}
+
 export interface StateDTO {
   clock: ClockDTO;
   me: PlayerMeDTO;
@@ -78,12 +94,13 @@ export interface StateDTO {
   canAnswer?: boolean;
   mine?: MemberQuestionDTO[];
   board?: CaptainBoardQuestionDTO[];
-  clue?: string;
-  claimed?: boolean;
-  keyInfo?: string;
-  room?: string;
-  winnerTeamId?: string;
+  // Round 3
+  findRiddle?: string;
+  hint?: string;
+  boxes?: R3BoxDTO[];
+  result?: R3EndedResultDTO;
 }
+
 
 /**
  * Mapper for player profile
@@ -159,25 +176,4 @@ export function mapCaptainBoardQuestionDTO(
   };
 }
 
-/**
- * Safe mapper for Round 3 (only entitled team gets key & room, clue only for r3_eligible)
- */
-export function mapRound3DTO(
-  r3: { clue_text: string; key_info: string; room: string },
-  eligible: boolean,
-  claim: { team_id: string } | null,
-  myTeamId: string
-): { clue?: string; claimed: boolean; keyInfo?: string; room?: string; winnerTeamId?: string } {
-  if (!eligible) {
-    return { claimed: !!claim };
-  }
 
-  const isWinner = claim && claim.team_id === myTeamId;
-  return {
-    clue: r3.clue_text,
-    claimed: !!claim,
-    keyInfo: isWinner ? r3.key_info : undefined,
-    room: isWinner ? r3.room : undefined,
-    winnerTeamId: claim ? claim.team_id : undefined,
-  };
-}

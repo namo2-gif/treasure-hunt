@@ -10,8 +10,8 @@ const addTimeSchema = z.object({
   minutes: z.number().int().positive(),
 });
 
-const goLiveSchema = z.object({
-  confirm: z.literal('LIVE'),
+const openR3Schema = z.object({
+  force: z.boolean().optional(),
 });
 
 const resetSchema = z.object({
@@ -33,7 +33,6 @@ const validActions: Set<string> = new Set([
   'pause',
   'resume',
   'add-time',
-  'go-live',
   'reset',
 ]);
 
@@ -78,10 +77,10 @@ export async function POST(
       return NextResponse.json({ ok: false, code: 'VALIDATION_ERROR', message: 'Field minutes must be a positive integer' }, { status: 400 });
     }
     body = parsed.data;
-  } else if (canonicalAction === 'go-live') {
-    const parsed = goLiveSchema.safeParse(body);
+  } else if (canonicalAction === 'open-r3') {
+    const parsed = openR3Schema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ ok: false, code: 'VALIDATION_ERROR', message: 'Field confirm must be exactly "LIVE"' }, { status: 400 });
+      return NextResponse.json({ ok: false, code: 'VALIDATION_ERROR', message: 'Invalid open-r3 payload' }, { status: 400 });
     }
     body = parsed.data;
   } else if (canonicalAction === 'reset') {

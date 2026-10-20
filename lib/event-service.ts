@@ -12,6 +12,8 @@ export interface EventStateRow {
   run2_open_ms: number | null;
   r2_hard_end_ms: number | null;
   break_end_ms: number | null;
+  r3_start_ms: number | null;
+  r3_end_ms: number | null;
 }
 
 export interface ClockInfo {
@@ -32,7 +34,6 @@ export type EventAction =
   | 'pause'
   | 'resume'
   | 'add-time'
-  | 'go-live'
   | 'reset';
 
 /**
@@ -47,7 +48,7 @@ export async function advanceEvent(client: SupabaseClient): Promise<void> {
 }
 
 /**
- * Gets the current event state and clock information.
+ * Gets the current event state and clock information using database clock (Section 4.1 & 15.1 A8).
  */
 export async function getEventStateAndClock(client: SupabaseClient): Promise<{
   state: EventStateRow;
@@ -55,25 +56,26 @@ export async function getEventStateAndClock(client: SupabaseClient): Promise<{
 }> {
   await advanceEvent(client);
 
-  const { data: state, error } = await client
-    .from('event_state')
-    .select('*')
-    .eq('id', 1)
-    .single();
+  const [{ data: state, error: stateError }, { data: clockData, error: clockError }] = await Promise.all([
+    client.from('event_state').select('*').eq('id', 1).single(),
+    client.rpc('event_clock'),
+  ]);
 
-  if (error || !state) {
-    throw new Error(`Failed to load event_state: ${error?.message || 'Not found'}`);
+  if (stateError || !state) {
+    throw new Error(`Failed to load event_state: ${stateError?.message || 'Not found'}`);
   }
 
-  const serverNowMs = Date.now();
-  const eventNowMs = calcEventNowMs(serverNowMs, state);
+  // Use event_clock() RPC if available, fallback to pure formula only if RPC missing
+  const serverNowMs = clockData?.serverNowMs ?? Date.now();
+  const eventNowMs = clockData?.eventNowMs ?? calcEventNowMs(serverNowMs, state);
+  const paused = clockData?.paused ?? !!state.paused_at;
 
   return {
     state: state as EventStateRow,
     clock: {
       serverNowMs,
       eventNowMs,
-      paused: !!state.paused_at,
+      paused,
       pausedAt: state.paused_at,
       pausedTotalMs: state.paused_total_ms,
     },
@@ -100,7 +102,6 @@ export async function executeEventAction(
     'pause': 'pause_event',
     'resume': 'resume_event',
     'add-time': 'add_time',
-    'go-live': 'go_live',
     'reset': 'reset_event_data',
   };
 
@@ -109,8 +110,8 @@ export async function executeEventAction(
     let rpcArgs: any = { p_admin_id: adminId };
     if (action === 'add-time') {
       rpcArgs = { p_admin_id: adminId, p_minutes: payload?.minutes };
-    } else if (action === 'go-live') {
-      rpcArgs = { p_admin_id: adminId, p_confirm: payload?.confirm };
+    } else if (action === 'open-r3') {
+      rpcArgs = { p_force: !!payload?.force };
     } else if (action === 'reset') {
       rpcArgs = { p_admin_id: adminId, p_confirm: payload?.confirm };
     }
@@ -129,7 +130,8 @@ export async function executeEventAction(
 }
 
 /**
- * Atomic registration for a QR scan (Section 6.1).
+ * Atomic registration for a QR scan (Section 6.1 & Section 15.4.6).
+ * Routes to scan_dispatch in Postgres, handling both R2 QRs and R3 start QRs.
  */
 export async function registerScan(
   client: SupabaseClient,
@@ -144,9 +146,10 @@ export async function registerScan(
   piece_no?: number;
   qr_name?: string;
   n?: number;
+  kind?: string;
 }> {
-  // 1. Try Postgres RPC first
-  const { data, error } = await client.rpc('register_scan', {
+  // 1. Try Postgres scan_dispatch RPC first
+  const { data, error } = await client.rpc('scan_dispatch', {
     p_student: studentId,
     p_token: token,
   });
@@ -155,9 +158,19 @@ export async function registerScan(
     return data;
   }
 
+  // Fallback to register_scan if scan_dispatch is not yet migrated
+  if (error && error.code === 'PGRST202') {
+    const { data: regData, error: regError } = await client.rpc('register_scan', {
+      p_student: studentId,
+      p_token: token,
+    });
+    if (!regError && regData) return regData;
+  }
+
   if (error && error.code !== 'PGRST202') {
     return { ok: false, code: 'RPC_ERROR', message: error.message };
   }
 
-  return { ok: false, code: 'RPC_ERROR', message: 'register_scan is missing in the database. Run the SQL migrations.' };
+  return { ok: false, code: 'RPC_ERROR', message: 'scan_dispatch is missing in the database. Run the SQL migrations.' };
 }
+

@@ -22,8 +22,12 @@ function pollMs(screen: string): number {
     case 'R1':
     case 'R2_QUESTIONS':
       return 15000;
-    case 'R2_SPECTATOR':
+    case 'R3_FIND':
+    case 'R3_BOXES':
+      return jitter(5000);
     case 'R3_SPECTATOR':
+      return 10000;
+    case 'R2_SPECTATOR':
     case 'ENDED':
       return 30000;
     default:
@@ -135,7 +139,7 @@ export default function Game() {
         </div>
       )}
 
-      <Screen state={state} post={post} refresh={refresh} />
+      <Screen state={state} remainingS={remainingS} post={post} refresh={refresh} />
     </div>
   );
 }
@@ -165,7 +169,17 @@ function Msg({ title, text }: { title: string; text?: string }) {
 
 type PostFn = (url: string, key: string, body: Record<string, unknown>) => Promise<Api | null>;
 
-function Screen({ state, post, refresh }: { state: StateDTO; post: PostFn; refresh: () => void }) {
+function Screen({
+  state,
+  remainingS,
+  post,
+  refresh,
+}: {
+  state: StateDTO;
+  remainingS: number | null;
+  post: PostFn;
+  refresh: () => void;
+}) {
   switch (state.screen) {
     case 'WAIT_R1':
       return <Msg title="Stand by" text="Round 1 has not started yet." />;
@@ -178,12 +192,29 @@ function Screen({ state, post, refresh }: { state: StateDTO; post: PostFn; refre
       return <Msg title={state.message ?? 'Watching'} />;
     case 'R2_DONE':
       return <Msg title="Run complete" text={state.message} />;
-    case 'R2_BREAK':
-      return <Msg title="Break" text="Round 2 is over. Round 3 is coming." />;
-    case 'R3':
-      return <Round3Screen state={state} refresh={refresh} />;
+    case 'R2_BREAK': {
+      const isZero = state.deadlineEventMs !== undefined && remainingS === 0;
+      return (
+        <Msg
+          title="Break"
+          text={isZero ? 'Break over. Waiting for the organisers.' : 'Break. The next round starts soon.'}
+        />
+      );
+    }
+    case 'R3_FIND':
+      return <R3FindScreen state={state} />;
+    case 'R3_BOXES':
+      return <R3BoxesScreen state={state} post={post} refresh={refresh} />;
+    case 'R3_SPECTATOR':
+      return (
+        <Msg
+          title="Watching the Hunt"
+          text="You are not among the top 5 teams. Watch the hunt."
+        />
+      );
     case 'ENDED':
-      return <Msg title="The hunt has ended" text="Thanks for playing." />;
+      return <EndedScreen state={state} />;
+
     case 'R2_SCAN':
       return (
         <Card>
@@ -497,173 +528,289 @@ function RiddleCard({
   );
 }
 
-function Round3Screen({ state, refresh }: { state: StateDTO; refresh: () => void }) {
-  const [password, setPassword] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
-  const [throttleSec, setThrottleSec] = useState<number | null>(null);
-
-  const isWinner = state.winnerTeamId === state.me.teamId;
-  const isClaimedByOther = state.claimed && !isWinner;
-
-  // Countdown timer for lockout
-  useEffect(() => {
-    if (throttleSec === null || throttleSec <= 0) return;
-    const interval = setInterval(() => {
-      setThrottleSec((s) => (s !== null && s > 1 ? s - 1 : null));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [throttleSec]);
-
-  async function submitPassword(e: React.FormEvent) {
-    e.preventDefault();
-    if (!password.trim() || busy || throttleSec !== null) return;
-    setBusy(true);
-    setMsg(null);
-
-    try {
-      const res = await fetch('/api/r3/claim', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: password.trim() }),
-      });
-      const data = await res.json();
-      if (data.ok && data.won) {
-        setMsg({ text: 'Password correct! You have won Round 3!', ok: true });
-        refresh();
-      } else if (data.code === 'THROTTLED') {
-        const s = data.retryAfterSec ?? 30;
-        setThrottleSec(s);
-        setMsg({ text: getErrorMessage('THROTTLED', { s }), ok: false });
-      } else {
-        setMsg({ text: data.code ? getErrorMessage(data.code) : 'Incorrect password.', ok: false });
-        if (data.code === 'ALREADY_CLAIMED') {
-          refresh();
-        }
-      }
-    } catch {
-      setMsg({ text: 'Network error. Please try again.', ok: false });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // 1. If this team won Round 3
-  if (isWinner) {
-    return (
-      <div className="flex flex-col gap-4">
-        <div className="p-6 rounded-2xl bg-gradient-to-b from-amber-500/20 to-slate-900 border-2 border-accent text-center shadow-xl">
-          <span className="px-3 py-1 text-xs font-black uppercase tracking-wider rounded-full bg-accent text-slate-950">
-            🏆 FIRST PLACE WINNER 🏆
-          </span>
-          <div className="text-4xl font-black text-accent mt-4 font-mono tracking-wider">
-            {state.me.teamId}
-          </div>
-          <div className="text-xl font-bold text-slate-100 mt-1">{state.me.teamName}</div>
-          <p className="text-sm font-semibold text-amber-200 mt-3">
-            Go to the room and show this to the organiser.
-          </p>
-
-          <div className="mt-6 p-4 rounded-xl bg-slate-950/80 border border-slate-700 space-y-2">
-            <div>
-              <span className="text-[10px] uppercase font-bold text-slate-400">Winning Room:</span>
-              <div className="text-2xl font-black text-slate-100">{state.room || 'Room 101'}</div>
-            </div>
-            {state.keyInfo && (
-              <div className="pt-2 border-t border-slate-800">
-                <span className="text-[10px] uppercase font-bold text-slate-400">Secret Key Info:</span>
-                <div className="text-sm font-mono text-accent font-semibold break-words">
-                  {state.keyInfo}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // 2. If another team already claimed victory
-  if (isClaimedByOther) {
-    return (
-      <Card>
-        <div className="text-center py-6">
-          <div className="w-12 h-12 rounded-full bg-slate-800 border border-slate-700 text-slate-400 flex items-center justify-center mx-auto mb-3 text-xl font-bold">
-            🔒
-          </div>
-          <h2 className="text-lg font-bold text-slate-100">Round 3 Claimed</h2>
-          <p className="text-sm text-slate-400 mt-2">
-            Another team got there first. Thanks for putting up a great race!
-          </p>
-        </div>
-      </Card>
-    );
-  }
-
-  // 3. Active Round 3 Clue and Password Input
+function R3FindScreen({ state }: { state: StateDTO }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <div>
           <div className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Round 3</div>
-          <h2 className="text-base font-bold text-slate-100">Final Decryption</h2>
+          <h2 className="text-base font-bold text-slate-100">Location Hunt</h2>
         </div>
         <span className="px-2 py-0.5 text-xs font-bold uppercase rounded bg-accent/20 text-accent">
           Top 5 Race
         </span>
       </div>
 
-      {/* Enciphered Clue Card */}
       <Card>
-        <span className="text-xs font-bold uppercase text-slate-400 tracking-wider">Enciphered Clue</span>
-        <div className="mt-2 p-3.5 rounded-lg bg-slate-950/80 border border-slate-800 font-mono text-sm text-accent whitespace-pre-wrap leading-relaxed break-words">
-          {state.clue || 'Clue arrives shortly...'}
+        <span className="text-xs font-bold uppercase text-slate-400 tracking-wider">Start Clue</span>
+        <div className="mt-2 p-4 rounded-xl bg-slate-950/80 border border-slate-800 text-sm text-accent whitespace-pre-wrap leading-relaxed">
+          {state.findRiddle || 'Finding your start location...'}
         </div>
-        <p className="text-xs text-slate-400 mt-2">
-          Decrypt the message with your team. Any team member can submit the final password.
-        </p>
-      </Card>
-
-      {/* Password Submission Form */}
-      <Card>
-        <form onSubmit={submitPassword} className="space-y-3">
-          <div>
-            <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">
-              Final Password
-            </label>
-            <input
-              type="text"
-              disabled={busy || throttleSec !== null}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={throttleSec ? `Locked out for ${throttleSec}s` : 'Enter password'}
-              autoCapitalize="off"
-              autoCorrect="off"
-              className="w-full px-3.5 py-2.5 text-sm rounded-lg bg-slate-900 text-slate-100 border border-slate-700 focus:outline-none focus:border-accent disabled:opacity-50"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={!password.trim() || busy || throttleSec !== null}
-            className="w-full py-3.5 rounded-xl bg-accent hover:bg-amber-400 text-slate-950 font-bold text-sm tracking-wide disabled:opacity-40 transition-colors shadow-md"
-          >
-            {busy ? 'Verifying...' : throttleSec ? `Locked (${throttleSec}s)` : 'Submit Password'}
-          </button>
-
-          {msg && (
-            <p
-              className={`text-xs text-center font-semibold mt-2 ${
-                msg.ok ? 'text-emerald-400' : 'text-amber-300'
-              }`}
-            >
-              {msg.text}
-            </p>
+        <div className="mt-3 text-xs text-slate-300 font-medium space-y-1">
+          <p>Find the place this riddle points to. Your captain scans the QR there.</p>
+          {!state.canSubmit && (
+            <p className="text-slate-400 italic">👀 Waiting for your captain to arrive and scan the location QR.</p>
           )}
-        </form>
+        </div>
       </Card>
     </div>
   );
 }
+
+function R3BoxesScreen({
+  state,
+  post,
+  refresh,
+}: {
+  state: StateDTO;
+  post: PostFn;
+  refresh: () => void;
+}) {
+  const boxes = state.boxes || [];
+  const canSubmit = !!state.canSubmit;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-xs uppercase tracking-wider text-slate-400 font-semibold">Round 3</div>
+          <h2 className="text-base font-bold text-slate-100">The 4 Boxes</h2>
+        </div>
+        <span className="px-2 py-0.5 text-xs font-bold uppercase rounded bg-accent/20 text-accent">
+          Milestones: {boxes.filter((b) => b.status === 'solved').length} / 4
+        </span>
+      </div>
+
+      {state.hint && (
+        <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300">
+          <span className="font-bold">Hint: </span>
+          <span>{state.hint}</span>
+        </div>
+      )}
+
+      {!canSubmit && (
+        <div className="rounded-lg p-3 bg-slate-800/80 border border-slate-700 text-xs text-slate-300">
+          👀 Team Members: Riddles are read-only so you can split up. Only your captain can type and submit answers.
+        </div>
+      )}
+
+      {boxes.map((b) => (
+        <R3BoxCard
+          key={b.box}
+          box={b}
+          canSubmit={canSubmit}
+          post={post}
+          refresh={refresh}
+        />
+      ))}
+    </div>
+  );
+}
+
+function R3BoxCard({
+  box,
+  canSubmit,
+  post,
+  refresh,
+}: {
+  box: { box: number; riddle: string; kind: 'digit' | 'letter'; status: string };
+  canSubmit: boolean;
+  post: PostFn;
+  refresh: () => void;
+}) {
+  const [val, setVal] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+
+  const isSolved = box.status === 'solved';
+  const isLocked = box.status === 'locked';
+  const isDone = isSolved || isLocked;
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const clean = val.trim().toUpperCase();
+    if (!clean || busy || !canSubmit || isDone) return;
+
+    if (box.kind === 'digit' && !/^[1-9]$/.test(clean)) {
+      setMsg({ text: 'Box 1 takes one digit from 1 to 9.', ok: false });
+      return;
+    }
+    if (box.kind === 'letter' && !/^[A-Z]$/.test(clean)) {
+      setMsg({ text: `Box ${box.box} takes one letter.`, ok: false });
+      return;
+    }
+
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await post('/api/r3/answer', `r3:${box.box}:${clean}`, {
+        box: box.box,
+        value: clean,
+      });
+      if (!res) return;
+      if (res.ok) {
+        if (res.status === 'won') {
+          setMsg({
+            text: 'Code correct! The code is the room number. Decipher it and go find the treasure.',
+            ok: true,
+          });
+        } else if (res.status === 'correct') {
+          setMsg({ text: 'Correct.', ok: true });
+        } else if (res.status === 'locked') {
+          setMsg({ text: 'Wrong. This box is locked.', ok: false });
+        } else if (res.status === 'wrong') {
+          setMsg({ text: `Wrong. ${res.triesLeft ?? 1} try left.`, ok: false });
+        }
+        setVal('');
+        refresh();
+      } else {
+        setMsg({ text: res.code ? getErrorMessage(res.code) : String(res.message || 'Error'), ok: false });
+        refresh();
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold text-accent">Box #{box.box} ({box.kind === 'digit' ? '1 Digit' : '1 Letter'})</span>
+        <span
+          className={`px-2 py-0.5 text-[10px] uppercase font-bold rounded ${
+            isSolved
+              ? 'bg-emerald-500/20 text-emerald-400'
+              : isLocked
+              ? 'bg-red-500/20 text-red-400'
+              : box.status === 'one_try_left'
+              ? 'bg-amber-500/20 text-amber-300'
+              : 'bg-slate-800 text-slate-300'
+          }`}
+        >
+          {isSolved
+            ? '✓ Solved'
+            : isLocked
+            ? '🔒 Locked'
+            : box.status === 'one_try_left'
+            ? '1 Try Left'
+            : 'Open'}
+        </span>
+      </div>
+
+      <p className="text-sm text-slate-200 mt-2 font-medium leading-relaxed">{box.riddle}</p>
+
+      {!isDone && canSubmit && (
+        <form onSubmit={handleSubmit} className="mt-3 flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              inputMode={box.kind === 'digit' ? 'numeric' : 'text'}
+              maxLength={1}
+              value={val}
+              disabled={busy}
+              onChange={(e) => setVal(e.target.value.toUpperCase())}
+              placeholder={box.kind === 'digit' ? '1-9' : 'A-Z'}
+              className="w-16 text-center py-2 px-3 text-lg font-black uppercase rounded-lg bg-slate-900 text-slate-100 border border-slate-700 focus:outline-none focus:border-accent disabled:opacity-50"
+            />
+            <button
+              type="submit"
+              disabled={!val.trim() || busy}
+              className="flex-1 py-2.5 px-4 rounded-lg bg-accent text-slate-950 font-bold text-xs tracking-wide hover:bg-amber-400 disabled:opacity-40 transition-colors"
+            >
+              {busy ? 'Checking...' : `Submit Box ${box.box}`}
+            </button>
+          </div>
+          <p className="text-[11px] text-slate-400">
+            {box.status === 'one_try_left' ? 'Warning: You have 1 try left on this box.' : 'You have 2 tries on this box.'}
+          </p>
+        </form>
+      )}
+
+      {msg && (
+        <div
+          className={`mt-2 p-2 rounded text-xs text-center font-semibold ${
+            msg.ok ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-800' : 'bg-red-950/60 text-red-300 border border-red-800'
+          }`}
+        >
+          {msg.text}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function EndedScreen({ state }: { state: StateDTO }) {
+  const res = state.result;
+
+  if (!res) {
+    return <Msg title="The hunt has ended" text="The event is over." />;
+  }
+
+  if (res.reason === 'code' && res.youWon) {
+    return (
+      <div className="p-6 rounded-2xl bg-gradient-to-b from-amber-500/20 to-slate-900 border-2 border-accent text-center shadow-xl flex flex-col items-center gap-3">
+        <span className="px-3 py-1 text-xs font-black uppercase tracking-wider rounded-full bg-accent text-slate-950">
+          🏆 TREASURE UNLOCKED 🏆
+        </span>
+        <div className="text-4xl sm:text-5xl font-black text-accent mt-2 font-mono tracking-wider">
+          {res.teamId || state.me.teamId}
+        </div>
+        <div className="text-lg font-bold text-slate-100">{state.me.teamName}</div>
+        <p className="text-sm font-semibold text-amber-200 mt-2">
+          Code correct! The code is the room number. Decipher it and go find the treasure.
+        </p>
+        <div className="mt-4 p-3 rounded-lg bg-slate-950/90 border border-slate-800 text-xs text-slate-300">
+          Show this screen to the organiser.
+        </div>
+      </div>
+    );
+  }
+
+  if (res.reason === 'code' && !res.youWon) {
+    return (
+      <Card>
+        <div className="text-center py-6">
+          <div className="w-12 h-12 rounded-full bg-slate-800 border border-slate-700 text-slate-400 flex items-center justify-center mx-auto mb-3 text-xl font-bold">
+            🏁
+          </div>
+          <h2 className="text-lg font-bold text-slate-100">Hunt Completed</h2>
+          <p className="text-sm text-slate-300 mt-2">
+            <span className="font-bold text-accent">{res.winnerTeamName || 'Another team'}</span> cracked the code first. The hunt is over.
+          </p>
+        </div>
+      </Card>
+    );
+  }
+
+  if (res.reason === 'progress') {
+    return (
+      <Card>
+        <div className="text-center py-6">
+          <div className="w-12 h-12 rounded-full bg-slate-800 border border-slate-700 text-slate-400 flex items-center justify-center mx-auto mb-3 text-xl font-bold">
+            ⏱️
+          </div>
+          <h2 className="text-lg font-bold text-slate-100">Time is up</h2>
+          <p className="text-sm text-slate-300 mt-2">
+            Time is up. <span className="font-bold text-accent">{res.winnerTeamName}</span> wins with the furthest progress ({res.milestones ?? 0} of 5 steps).
+          </p>
+        </div>
+      </Card>
+    );
+  }
+
+  if (res.reason === 'none') {
+    return (
+      <Card>
+        <div className="text-center py-6">
+          <h2 className="text-lg font-bold text-slate-100">Time is up</h2>
+          <p className="text-sm text-slate-400 mt-2">Nobody reached the first location.</p>
+        </div>
+      </Card>
+    );
+  }
+
+  return <Msg title="The hunt has ended" text="The event is over." />;
+}
+
 
 

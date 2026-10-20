@@ -55,9 +55,18 @@ export function submitAnswer(
   });
 }
 
-export function claimRound3(client: SupabaseClient, studentId: string, password: string) {
-  return callRpc(client, 'claim_round3', {
+export function submitR3Box(
+  client: SupabaseClient,
+  studentId: string,
+  box: number,
+  value: string,
+  requestId: string
+) {
+  return callRpc(client, 'r3_submit_box', {
     p_student: studentId,
-    p_password: password,
+    p_box: box,
+    p_value: value,
+    p_request: requestId,
   });
 }
+

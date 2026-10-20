@@ -19,6 +19,8 @@ export interface RawPlayerState {
   paused: boolean;
   phase: 'setup' | 'r1_running' | 'r1_closed' | 'r2_running' | 'r2_break' | 'r3_open' | 'ended';
   r1DeadlineMs?: number | null;
+  breakEndMs?: number | null;
+  r3EndMs?: number | null;
   triesR1?: number;
   triesR2: number;
   student: { id: string; name: string; isCaptain: boolean };
@@ -48,16 +50,27 @@ export interface RawPlayerState {
     options: Array<{ id: string; text: string }>;
     attempts: Array<{ try_no: number; correct: boolean }>;
   }>;
-  r3Clue?: string | null;
-  r3Claimed?: boolean;
-  r3WinnerTeamId?: string | null;
-  r3KeyInfo?: string | null;
-  r3Room?: string | null;
+  r3?: {
+    hasScanned: boolean;
+    findRiddle?: string | null;
+    hint?: string | null;
+    boxes?: Array<{
+      box: number;
+      riddle: string;
+      kind: 'digit' | 'letter';
+      status: 'open' | 'one_try_left' | 'solved' | 'locked';
+    }>;
+    result?: {
+      reason: 'code' | 'progress' | 'admin' | 'none';
+      winnerTeamId?: string | null;
+      winnerTeamName?: string | null;
+      milestones?: number | null;
+    } | null;
+  };
 }
 
 /**
- * Turns the raw database snapshot into the player-facing State of Section 8.1.
- * Round 1 and Round 3 payloads arrive in later phases; their screens are chosen here already.
+ * Turns the raw database snapshot into the player-facing State of Section 8.1 / Section 15.6.
  */
 export function buildState(raw: RawPlayerState): StateDTO {
   const me = mapPlayerMe(
@@ -97,23 +110,60 @@ export function buildState(raw: RawPlayerState): StateDTO {
     case 'r1_closed':
       return { ...base, screen: 'R1_DONE' };
     case 'r2_break':
-      return { ...base, screen: inR2 ? 'R2_BREAK' : 'R2_SPECTATOR', message: inR2 ? undefined : 'Round 2 is for qualified teams. You can watch the fun.' };
-    case 'r3_open':
-      if (raw.team.r3Eligible) {
+      return {
+        ...base,
+        screen: inR2 ? 'R2_BREAK' : 'R2_SPECTATOR',
+        deadlineEventMs: raw.breakEndMs ?? undefined,
+        message: inR2 ? undefined : 'Round 2 is for qualified teams. You can watch the fun.',
+      };
+    case 'r3_open': {
+      if (!raw.team.r3Eligible || raw.team.withdrawn) {
         return {
           ...base,
-          screen: 'R3',
-          clue: raw.r3Clue ?? undefined,
-          claimed: !!raw.r3Claimed,
-          winnerTeamId: raw.r3WinnerTeamId ?? undefined,
-          keyInfo: raw.r3KeyInfo ?? undefined,
-          room: raw.r3Room ?? undefined,
+          screen: 'R3_SPECTATOR',
+          deadlineEventMs: raw.r3EndMs ?? undefined,
+          message: 'You are not among the top 5 teams. Watch the hunt.',
         };
-      } else {
-        return { ...base, screen: 'R3_SPECTATOR', message: 'You are not among the top 5 teams.' };
       }
-    case 'ended':
-      return { ...base, screen: 'ENDED' };
+
+      if (!raw.r3?.hasScanned) {
+        return {
+          ...base,
+          screen: 'R3_FIND',
+          deadlineEventMs: raw.r3EndMs ?? undefined,
+          findRiddle: raw.r3?.findRiddle ?? undefined,
+          canSubmit: me.isCaptain,
+        };
+      }
+
+      return {
+        ...base,
+        screen: 'R3_BOXES',
+        deadlineEventMs: raw.r3EndMs ?? undefined,
+        hint: raw.r3?.hint ?? '',
+        canSubmit: me.isCaptain,
+        boxes: raw.r3?.boxes ?? [],
+      };
+    }
+    case 'ended': {
+      const r3Res = raw.r3?.result;
+      if (!r3Res || !r3Res.reason) {
+        return { ...base, screen: 'ENDED' };
+      }
+
+      const youWon = r3Res.winnerTeamId === raw.team.id;
+      return {
+        ...base,
+        screen: 'ENDED',
+        result: {
+          reason: r3Res.reason,
+          winnerTeamName: r3Res.winnerTeamName ?? undefined,
+          youWon,
+          teamId: youWon ? (r3Res.winnerTeamId ?? undefined) : undefined,
+          milestones: r3Res.reason === 'progress' && r3Res.milestones != null ? r3Res.milestones : undefined,
+        },
+      };
+    }
     case 'r2_running':
       break;
   }

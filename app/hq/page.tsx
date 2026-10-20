@@ -14,7 +14,6 @@ interface DashboardData {
     pausedTotalMs: number;
   };
   state: {
-    mode: 'test' | 'live';
     phase: string;
     pausedAt: string | null;
     pausedTotalMs: number;
@@ -43,6 +42,9 @@ interface DashboardData {
     withdrawn: boolean;
     r3_eligible: boolean;
     runs?: any[];
+    r2Points?: number | null;
+    r2Rank?: number | null;
+    r2LastMs?: number | null;
   }>;
   qrs: Array<{
     id: number;
@@ -53,6 +55,69 @@ interface DashboardData {
     run2Count: number;
   }>;
 }
+
+const HQNav = ({ active }: { active: string }) => {
+  const [open, setOpen] = useState(false);
+  const links = [
+    { href: '/hq', label: 'Dashboard' },
+    { href: '/hq/event', label: 'Event Control' },
+    { href: '/hq/teams', label: 'Teams & Students' },
+    { href: '/hq/selection', label: 'Selection' },
+    { href: '/hq/standings', label: 'Standings' },
+    { href: '/hq/round3', label: 'Round 3' },
+    { href: '/hq/content', label: 'Content' },
+    { href: '/hq/qr', label: 'QR Locations' },
+    { href: '/hq/interventions', label: 'Interventions' },
+    { href: '/hq/logs', label: 'Log & Export' },
+    { href: '/hq/settings', label: 'Settings' },
+  ];
+
+  return (
+    <div>
+      {/* Mobile Menu Button */}
+      <div className="lg:hidden mt-2">
+        <button
+          onClick={() => setOpen(!open)}
+          className="px-3 py-1.5 text-xs font-semibold rounded bg-slate-800 text-slate-200 border border-slate-700 flex items-center gap-2"
+        >
+          <span>☰ Menu</span>
+          <span className="text-accent">{links.find((l) => l.href === active)?.label || 'Navigation'}</span>
+        </button>
+        {open && (
+          <div className="mt-2 p-3 rounded-lg bg-slate-900 border border-slate-700 flex flex-col gap-2">
+            {links.map((l) => (
+              <Link
+                key={l.href}
+                href={l.href}
+                onClick={() => setOpen(false)}
+                className={`text-xs py-1 px-2 rounded ${
+                  active === l.href ? 'bg-accent/20 text-accent font-bold' : 'text-slate-300 hover:text-accent'
+                }`}
+              >
+                {l.label}
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Desktop Navigation */}
+      <nav className="hidden lg:flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs font-medium text-slate-400">
+        {links.map((l) => (
+          <Link
+            key={l.href}
+            href={l.href}
+            className={`hover:text-accent transition-colors ${
+              active === l.href ? 'text-accent font-semibold' : ''
+            }`}
+          >
+            {l.label}
+          </Link>
+        ))}
+      </nav>
+    </div>
+  );
+};
 
 export default function AdminHQDashboard() {
   const router = useRouter();
@@ -69,7 +134,6 @@ export default function AdminHQDashboard() {
   });
   const [clientEventNow, setClientEventNow] = useState<number>(Date.now());
 
-  // Fetch dashboard data
   async function fetchDashboard() {
     try {
       const res = await fetch('/api/admin/dashboard');
@@ -97,14 +161,12 @@ export default function AdminHQDashboard() {
     }
   }
 
-  // Poll dashboard every 5s
   useEffect(() => {
     fetchDashboard();
     const interval = setInterval(fetchDashboard, 5000);
     return () => clearInterval(interval);
   }, []);
 
-  // Update client clock display every second
   useEffect(() => {
     const clockInterval = setInterval(() => {
       const { local, eventNow, paused } = lastFetchRef.current;
@@ -118,7 +180,6 @@ export default function AdminHQDashboard() {
     return () => clearInterval(clockInterval);
   }, []);
 
-  // Execute event actions
   async function handleAction(action: string, payload?: any, confirmText?: string) {
     if (confirmText) {
       const confirmed = window.confirm(confirmText);
@@ -151,7 +212,6 @@ export default function AdminHQDashboard() {
     router.refresh();
   }
 
-  // Calculate countdown to the active deadline
   function getDeadlineCountdown(): { label: string; text: string } | null {
     if (!data) return null;
     const { phase, r1EndMs, r2HardEndMs, breakEndMs } = data.state;
@@ -183,15 +243,33 @@ export default function AdminHQDashboard() {
 
   const countdown = getDeadlineCountdown();
 
-  // Filtered teams list
+  function formatTime(lastMs: number | null | undefined): string {
+    if (!lastMs) return '-';
+    if (data?.state.r2StartMs) {
+      const elapsed = Math.max(0, lastMs - data.state.r2StartMs);
+      const totalSec = Math.floor(elapsed / 1000);
+      const mins = Math.floor(totalSec / 60);
+      const secs = totalSec % 60;
+      return `+${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return new Date(lastMs).toLocaleTimeString();
+  }
+
   const filteredTeams = (data?.teams || []).filter(
     (t) =>
       t.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const phase = data?.state.phase ?? 'setup';
+  const isBreak = phase === 'r2_break';
+  const breakOver = !data?.state.breakEndMs || clientEventNow >= data.state.breakEndMs;
+  const breakRemainingMs = data?.state.breakEndMs ? Math.max(0, data.state.breakEndMs - clientEventNow) : 0;
+  const breakSec = Math.floor(breakRemainingMs / 1000);
+  const breakMmSs = `${Math.floor(breakSec / 60).toString().padStart(2, '0')}:${(breakSec % 60).toString().padStart(2, '0')}`;
+
   return (
-    <div className="w-full max-w-4xl mx-auto py-6 px-4">
+    <div className="w-full max-w-7xl mx-auto py-6 px-4">
       {/* Top Header */}
       <div className="flex items-center justify-between pb-4 border-b border-slate-700">
         <div>
@@ -199,30 +277,9 @@ export default function AdminHQDashboard() {
             <span className="px-2 py-0.5 text-xs font-semibold uppercase bg-accent/20 text-accent rounded">
               HQ Control
             </span>
-            {data && (
-              <span
-                className={`px-2 py-0.5 text-xs font-bold uppercase rounded ${
-                  data.state.mode === 'live'
-                    ? 'bg-red-500/20 text-red-400 border border-red-500/40'
-                    : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                }`}
-              >
-                {data.state.mode}
-              </span>
-            )}
           </div>
           <h1 className="text-xl font-bold text-slate-100 mt-1">Campus Treasure Hunt</h1>
-          <nav className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs font-medium text-slate-400">
-            <Link href="/hq" className="text-accent">Dashboard</Link>
-            <Link href="/hq/teams" className="hover:text-accent transition-colors">Teams & Students</Link>
-            <Link href="/hq/selection" className="hover:text-accent transition-colors">Selection</Link>
-            <Link href="/hq/round3" className="hover:text-accent transition-colors">Round 3</Link>
-            <Link href="/hq/content" className="hover:text-accent transition-colors">Content</Link>
-            <Link href="/hq/qr" className="hover:text-accent transition-colors">QR Locations</Link>
-            <Link href="/hq/interventions" className="hover:text-accent transition-colors">Interventions</Link>
-            <Link href="/hq/logs" className="hover:text-accent transition-colors">Log & Export</Link>
-            <Link href="/hq/settings" className="hover:text-accent transition-colors">Settings</Link>
-          </nav>
+          <HQNav active="/hq" />
         </div>
         <button
           onClick={handleLogout}
@@ -238,138 +295,138 @@ export default function AdminHQDashboard() {
         </div>
       )}
 
-      {/* Main Clock & Phase Status Card */}
+      {/* Top Row: Phase, Clock & Action Controls */}
       {data && (
-        <div className="mt-6 p-5 rounded-xl bg-slate-800/90 border border-slate-700 shadow-md">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <span className="text-xs uppercase tracking-wide text-slate-400">Current Phase</span>
-              <div className="text-2xl font-black text-accent mt-0.5 uppercase tracking-wider">
-                {data.state.phase.replace('_', ' ')}
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Phase & Clock Card */}
+          <div className="p-4 sm:p-5 rounded-xl bg-slate-800/90 border border-slate-700 flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-xs uppercase tracking-wide text-slate-400">Current Phase</span>
+                <div className="text-xl sm:text-2xl font-black text-accent mt-0.5 uppercase tracking-wider">
+                  {phase.replace('_', ' ')}
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="text-xs uppercase tracking-wide text-slate-400">Event Clock</span>
+                <div className="flex items-center justify-end gap-1.5 mt-0.5">
+                  {data.clock.paused && (
+                    <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase bg-amber-500 text-slate-950 rounded animate-pulse">
+                      PAUSED
+                    </span>
+                  )}
+                  <span className="font-mono text-lg sm:text-xl font-bold text-slate-200">
+                    {new Date(clientEventNow).toLocaleTimeString()}
+                  </span>
+                </div>
               </div>
             </div>
 
-            <div className="text-right">
-              <span className="text-xs uppercase tracking-wide text-slate-400">Event Clock</span>
-              <div className="flex items-center justify-end gap-2 mt-0.5">
-                {data.clock.paused && (
-                  <span className="px-2 py-0.5 text-xs font-bold uppercase bg-amber-500 text-slate-950 rounded animate-pulse">
-                    PAUSED
-                  </span>
-                )}
-                <span className="font-mono text-xl font-bold text-slate-200">
-                  {new Date(clientEventNow).toLocaleTimeString()}
-                </span>
+            {countdown && (
+              <div className="mt-3 p-2.5 rounded-lg bg-slate-900/80 border border-slate-700/80 flex items-center justify-between">
+                <span className="text-xs font-medium text-slate-300 uppercase">{countdown.label}</span>
+                <span className="font-mono text-xl font-extrabold text-accent">{countdown.text}</span>
               </div>
+            )}
+          </div>
+
+          {/* Primary Action Card */}
+          <div className="p-4 sm:p-5 rounded-xl bg-slate-800/90 border border-slate-700 flex flex-col justify-between">
+            <div>
+              <span className="text-xs uppercase tracking-wide text-slate-400">Phase Transition</span>
+              <p className="text-xs text-slate-400 mt-1">Advance event to the next scheduled stage.</p>
+            </div>
+
+            <div className="mt-3">
+              {isBreak ? (
+                <button
+                  disabled={actionLoading}
+                  onClick={() => {
+                    if (!breakOver) {
+                      const confirmForce = window.confirm('The break is not over. Start now?');
+                      if (confirmForce) {
+                        handleAction('open-r3', { force: true });
+                      }
+                    } else {
+                      const confirmStart = window.confirm('Start Round 3 now?');
+                      if (confirmStart) {
+                        handleAction('open-r3', { force: false });
+                      }
+                    }
+                  }}
+                  className="w-full py-3 px-4 rounded-lg bg-accent text-slate-950 hover:bg-amber-400 font-bold text-sm transition-colors disabled:opacity-40 shadow-md active:scale-[0.99]"
+                >
+                  {actionLoading
+                    ? 'Processing...'
+                    : !breakOver
+                    ? `Start Round 3 (break ends in ${breakMmSs})`
+                    : 'Start Round 3'}
+                </button>
+              ) : data.primaryAction ? (
+                <div>
+                  <button
+                    disabled={!data.primaryAction.enabled || actionLoading}
+                    onClick={() =>
+                      handleAction(
+                        data.primaryAction!.action,
+                        undefined,
+                        `Proceed with action: "${data.primaryAction!.label}"?`
+                      )
+                    }
+                    className="w-full py-3 px-4 rounded-lg bg-accent text-slate-950 hover:bg-amber-400 font-bold text-sm transition-colors disabled:opacity-40 shadow-md active:scale-[0.99]"
+                  >
+                    {actionLoading ? 'Processing...' : data.primaryAction.label}
+                  </button>
+                  {data.primaryAction.reason && (
+                    <p className="text-xs text-amber-400 mt-1 text-center">
+                      Notice: {data.primaryAction.reason}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="text-xs text-slate-400 text-center py-2">Event completed</div>
+              )}
             </div>
           </div>
 
-          {/* Active Countdown */}
-          {countdown && (
-            <div className="mt-4 p-3 rounded-lg bg-slate-900/80 border border-slate-700/80 flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-300 uppercase">{countdown.label}</span>
-              <span className="font-mono text-2xl font-extrabold text-accent">
-                {countdown.text}
-              </span>
-            </div>
-          )}
-
-          {/* Big Action Button for Primary Phase Transition */}
-          {data.primaryAction && (
-            <div className="mt-6 pt-4 border-t border-slate-700">
-              <button
-                disabled={!data.primaryAction.enabled || actionLoading}
-                onClick={() =>
-                  handleAction(
-                    data.primaryAction!.action,
-                    undefined,
-                    `Proceed with action: "${data.primaryAction!.label}"?`
-                  )
-                }
-                className="w-full py-3.5 px-4 rounded-lg bg-accent text-slate-950 hover:bg-amber-400 font-bold text-base transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-lg active:scale-[0.99]"
-              >
-                {actionLoading ? 'Processing...' : data.primaryAction.label}
-              </button>
-              {data.primaryAction.reason && (
-                <p className="text-xs text-amber-400 mt-1.5 text-center">
-                  Notice: {data.primaryAction.reason}
-                </p>
+          {/* Quick Clock Interventions */}
+          <div className="p-4 sm:p-5 rounded-xl bg-slate-800/90 border border-slate-700 flex flex-col justify-between">
+            <span className="text-xs uppercase tracking-wide text-slate-400">Clock Adjustment</span>
+            <div className="mt-2 flex items-center gap-2">
+              {data.clock.paused ? (
+                <button
+                  disabled={actionLoading}
+                  onClick={() => handleAction('resume', undefined, 'Resume event clock?')}
+                  className="flex-1 py-2 px-3 text-xs font-bold rounded bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+                >
+                  Resume
+                </button>
+              ) : (
+                <button
+                  disabled={actionLoading || !['r1_running', 'r2_running', 'r2_break', 'r3_open'].includes(phase)}
+                  onClick={() => handleAction('pause', undefined, 'Pause event clock?')}
+                  className="flex-1 py-2 px-3 text-xs font-bold rounded bg-amber-600 hover:bg-amber-500 text-white transition-colors disabled:opacity-40"
+                >
+                  Pause
+                </button>
               )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Clock Controls: Pause / Resume / Add Time */}
-      {data && (
-        <div className="mt-6 p-5 rounded-xl bg-slate-800/80 border border-slate-700">
-          <h2 className="text-sm font-semibold text-slate-200 uppercase tracking-wide mb-3">
-            Clock Controls
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Pause / Resume */}
-            <div className="flex flex-col justify-between p-3.5 rounded-lg bg-slate-900/60 border border-slate-700/80">
-              <div>
-                <div className="text-xs font-medium text-slate-300">Clock Pause / Resume</div>
-                <p className="text-xs text-slate-400 mt-1">
-                  Pausing freezes the event clock and shifts all deadlines accordingly.
-                </p>
-              </div>
-              <div className="mt-3">
-                {data.clock.paused ? (
-                  <button
-                    disabled={actionLoading}
-                    onClick={() => handleAction('resume', undefined, 'Resume event clock?')}
-                    className="w-full py-2 px-3 text-xs font-bold rounded bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
-                  >
-                    Resume Event
-                  </button>
-                ) : (
-                  <button
-                    disabled={
-                      actionLoading ||
-                      !['r1_running', 'r2_running', 'r2_break', 'r3_open'].includes(
-                        data.state.phase
-                      )
-                    }
-                    onClick={() => handleAction('pause', undefined, 'Pause event clock?')}
-                    className="w-full py-2 px-3 text-xs font-bold rounded bg-amber-600 hover:bg-amber-500 text-white transition-colors disabled:opacity-40"
-                  >
-                    Pause Event
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Add Time */}
-            <div className="flex flex-col justify-between p-3.5 rounded-lg bg-slate-900/60 border border-slate-700/80">
-              <div>
-                <div className="text-xs font-medium text-slate-300">Add Time (Minutes)</div>
-                <p className="text-xs text-slate-400 mt-1">
-                  Pushes all deadlines later by adding to paused total ms.
-                </p>
-              </div>
-              <div className="mt-3 flex items-center gap-2">
+              <div className="flex items-center gap-1">
                 <input
                   type="number"
                   min="1"
                   max="120"
                   value={addMinutes}
                   onChange={(e) => setAddMinutes(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="w-20 px-2.5 py-1.5 text-xs rounded bg-slate-800 text-slate-100 border border-slate-600 focus:outline-none focus:border-accent"
+                  className="w-14 px-2 py-1.5 text-xs rounded bg-slate-900 text-slate-100 border border-slate-700 focus:outline-none focus:border-accent"
                 />
                 <button
                   disabled={actionLoading}
                   onClick={() =>
-                    handleAction(
-                      'add-time',
-                      { minutes: addMinutes },
-                      `Add ${addMinutes} minutes to all deadlines?`
-                    )
+                    handleAction('add-time', { minutes: addMinutes }, `Add ${addMinutes}m?`)
                   }
-                  className="flex-1 py-1.5 px-3 text-xs font-bold rounded bg-slate-700 hover:bg-slate-600 text-slate-100 border border-slate-500 transition-colors"
+                  className="py-1.5 px-2.5 text-xs font-bold rounded bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600"
                 >
-                  + Add Time
+                  +Time
                 </button>
               </div>
             </div>
@@ -377,134 +434,108 @@ export default function AdminHQDashboard() {
         </div>
       )}
 
-      {/* Mode & Reset Controls */}
+      {/* Main Grid: Teams Table (Laptop full width, mobile overflow-x-auto) + QR Counts */}
       {data && (
-        <div className="mt-6 p-5 rounded-xl bg-slate-800/80 border border-slate-700">
-          <h2 className="text-sm font-semibold text-slate-200 uppercase tracking-wide mb-3">
-            Event Management & Mode
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Go Live */}
-            <div className="p-3.5 rounded-lg bg-slate-900/60 border border-slate-700/80">
-              <div className="text-xs font-medium text-slate-300">Switch to Live Mode</div>
-              <p className="text-xs text-slate-400 mt-1">
-                Permanent switch. Once in live mode, reset event data is locked.
-              </p>
-              <button
-                disabled={data.state.mode === 'live' || actionLoading}
-                onClick={() => {
-                  const val = window.prompt('Type LIVE to confirm switching to live mode:');
-                  if (val === 'LIVE') {
-                    handleAction('go-live', { confirm: 'LIVE' });
-                  }
-                }}
-                className="mt-3 w-full py-2 px-3 text-xs font-bold rounded bg-slate-800 hover:bg-slate-700 text-red-400 border border-red-800/40 transition-colors disabled:opacity-40"
-              >
-                {data.state.mode === 'live' ? 'Live Mode Active' : 'Switch to Live'}
-              </button>
+        <div className="mt-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Teams Table (3 Columns) */}
+          <div className="lg:col-span-3 p-4 sm:p-5 rounded-xl bg-slate-800/80 border border-slate-700 flex flex-col">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-200 uppercase tracking-wide">
+                  Teams Overview ({data.stats.totalTeams} total, {data.stats.qualifiedTeams} qualified)
+                </h2>
+                <span className="text-xs text-slate-400">Shows Round 2 live scores and rank</span>
+              </div>
+              <input
+                type="text"
+                placeholder="Search team ID or name..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full sm:w-56 px-3 py-1.5 text-xs rounded bg-slate-900 text-slate-100 border border-slate-700 focus:outline-none focus:border-accent"
+              />
             </div>
 
-            {/* Reset Event Data */}
-            <div className="p-3.5 rounded-lg bg-slate-900/60 border border-slate-700/80">
-              <div className="text-xs font-medium text-slate-300">Reset Event Data</div>
-              <p className="text-xs text-slate-400 mt-1">
-                Truncates operational tables and resets state to setup (test mode only).
-              </p>
-              <button
-                disabled={data.state.mode !== 'test' || actionLoading}
-                onClick={() => {
-                  const val = window.prompt(
-                    'DANGER: This truncates all attempts and runs!\nType RESET to confirm:'
-                  );
-                  if (val === 'RESET') {
-                    handleAction('reset', { confirm: 'RESET' });
-                  }
-                }}
-                className="mt-3 w-full py-2 px-3 text-xs font-bold rounded bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-700 transition-colors disabled:opacity-40"
-              >
-                Reset Event (Typed RESET)
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Teams & QRs Summary Section */}
-      {data && (
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Teams Overview */}
-          <div className="p-5 rounded-xl bg-slate-800/80 border border-slate-700">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-slate-200 uppercase tracking-wide">
-                Teams ({data.stats.totalTeams} total, {data.stats.qualifiedTeams} qualified)
-              </h2>
-            </div>
-            <input
-              type="text"
-              placeholder="Search team ID or name..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-3 py-1.5 text-xs rounded bg-slate-900 text-slate-100 border border-slate-700 mb-3 focus:outline-none focus:border-accent"
-            />
-            <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
-              {filteredTeams.map((team) => (
-                <div
-                  key={team.id}
-                  className="flex items-center justify-between p-2.5 rounded bg-slate-900/60 border border-slate-700 text-xs"
-                >
-                  <div>
-                    <span className="font-bold text-accent mr-2">{team.id}</span>
-                    <span className="text-slate-200 font-medium">{team.name}</span>
-                    <span className="text-slate-400 ml-1.5">({team.n} members)</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    {team.qualified && (
-                      <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase rounded bg-emerald-500/20 text-emerald-400">
-                        Qualified
-                      </span>
-                    )}
-                    {team.withdrawn && (
-                      <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase rounded bg-red-500/20 text-red-400">
-                        Withdrawn
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {filteredTeams.length === 0 && (
-                <p className="text-xs text-slate-400 text-center py-4">No matching teams.</p>
-              )}
+            <div className="overflow-x-auto flex-1">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-700 text-slate-400 uppercase text-[10px] tracking-wider">
+                    <th className="py-2 px-2.5">Team</th>
+                    <th className="py-2 px-2.5">Members</th>
+                    <th className="py-2 px-2.5">Status</th>
+                    <th className="py-2 px-2.5 text-right">R2 Rank</th>
+                    <th className="py-2 px-2.5 text-right">R2 Points</th>
+                    <th className="py-2 px-2.5 text-right">Last Scoring</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 font-mono">
+                  {filteredTeams.map((team) => (
+                    <tr key={team.id} className="hover:bg-slate-700/30 transition-colors">
+                      <td className="py-2.5 px-2.5 font-sans font-bold text-slate-100">
+                        <span className="text-accent mr-1.5">{team.id}</span>
+                        <span>{team.name}</span>
+                      </td>
+                      <td className="py-2.5 px-2.5 text-slate-300 font-sans">{team.n}</td>
+                      <td className="py-2.5 px-2.5 font-sans">
+                        {team.withdrawn ? (
+                          <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase rounded bg-red-500/20 text-red-400">
+                            Withdrawn
+                          </span>
+                        ) : team.qualified ? (
+                          <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase rounded bg-emerald-500/20 text-emerald-400">
+                            Qualified
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 text-[11px]">-</span>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-2.5 text-right font-bold text-slate-200">
+                        {team.r2Rank ? `#${team.r2Rank}` : '-'}
+                      </td>
+                      <td className="py-2.5 px-2.5 text-right font-bold text-accent">
+                        {team.r2Points !== null && team.r2Points !== undefined ? team.r2Points : '-'}
+                      </td>
+                      <td className="py-2.5 px-2.5 text-right text-slate-400">
+                        {formatTime(team.r2LastMs)}
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredTeams.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="py-6 text-center text-slate-400 font-sans">
+                        No matching teams found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
 
-          {/* QR Locations Capacity Overview */}
-          <div className="p-5 rounded-xl bg-slate-800/80 border border-slate-700">
+          {/* QR Locations (1 Column Side) */}
+          <div className="p-4 sm:p-5 rounded-xl bg-slate-800/80 border border-slate-700">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold text-slate-200 uppercase tracking-wide">
-                QR Locations ({data.stats.activeQRs} active)
+                QR Capacity ({data.stats.activeQRs} active)
               </h2>
-              <a
-                href="/hq/qr"
-                className="text-xs font-semibold text-accent hover:underline"
-              >
-                Manage & Print →
-              </a>
+              <Link href="/hq/qr" className="text-xs font-semibold text-accent hover:underline">
+                Manage →
+              </Link>
             </div>
-            <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+            <div className="space-y-2">
               {data.qrs.map((qr) => (
                 <div
                   key={qr.id}
-                  className="flex items-center justify-between p-2.5 rounded bg-slate-900/60 border border-slate-700 text-xs"
+                  className="flex items-center justify-between p-2 rounded bg-slate-900/60 border border-slate-700 text-xs"
                 >
-                  <div>
-                    <span className="font-semibold text-slate-200">{qr.name}</span>
-                    <span className="text-slate-400 ml-1.5">(Cap: {qr.capacity})</span>
+                  <div className="min-w-0 pr-1">
+                    <span className="font-semibold text-slate-200 block truncate">{qr.name}</span>
+                    <span className="text-[10px] text-slate-400">Cap: {qr.capacity}</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-slate-400">
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[11px] text-slate-400">
                       R1: <b className="text-slate-200">{qr.run1Count}</b>
                     </span>
-                    <span className="text-slate-400">
+                    <span className="text-[11px] text-slate-400">
                       R2: <b className="text-slate-200">{qr.run2Count}</b>
                     </span>
                     <span

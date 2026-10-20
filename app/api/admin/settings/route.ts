@@ -9,13 +9,17 @@ import { getAdminSession } from '@/lib/session';
 const LOCK_ON_SETUP = ['r1_minutes', 'r1_points_per_riddle', 'tries_r1'];
 // Keys that lock once r1_closed passes (i.e., when r2 starts)
 const LOCK_ON_R1_CLOSED = ['r2_minutes', 'run_cap_minutes', 'run_total_points', 'tries_r2'];
+// Keys that lock once r2_break passes (i.e., when r3 starts)
+const LOCK_ON_R2_BREAK = ['r3_minutes', 'r3_tries_per_box'];
 
 const PHASES_AFTER_SETUP = ['r1_running', 'r1_closed', 'r2_running', 'r2_break', 'r3_open', 'ended'];
 const PHASES_AFTER_R1_CLOSED = ['r2_running', 'r2_break', 'r3_open', 'ended'];
+const PHASES_AFTER_R2_BREAK = ['r3_open', 'ended'];
 
 function isLocked(key: string, phase: string): boolean {
   if (LOCK_ON_SETUP.includes(key) && PHASES_AFTER_SETUP.includes(phase)) return true;
   if (LOCK_ON_R1_CLOSED.includes(key) && PHASES_AFTER_R1_CLOSED.includes(phase)) return true;
+  if (LOCK_ON_R2_BREAK.includes(key) && PHASES_AFTER_R2_BREAK.includes(phase)) return true;
   return false;
 }
 
@@ -32,8 +36,8 @@ const SETTING_LABELS: Record<string, string> = {
   tries_r2: 'Max Tries R2',
   default_qr_capacity: 'Default QR Capacity',
   variants_per_question: 'Variants per Question',
-  password_max_wrong: 'Password Max Wrong Tries',
-  password_lockout_s: 'Password Lockout (seconds)',
+  r3_minutes: 'Round 3 Duration (minutes)',
+  r3_tries_per_box: 'Max Tries per Round 3 Box',
 };
 
 export async function GET() {

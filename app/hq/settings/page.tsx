@@ -92,7 +92,7 @@ export default function SettingsPage() {
         <HQNav />
       </div>
 
-      <div className="mt-6 p-5 rounded-xl bg-slate-800/80 border border-slate-700">
+      <div className="mt-6 p-4 sm:p-5 rounded-xl bg-slate-800/80 border border-slate-700">
         <h2 className="text-sm font-semibold text-slate-200 uppercase tracking-wide mb-1">
           Configuration & Locks
         </h2>
@@ -109,10 +109,10 @@ export default function SettingsPage() {
               return (
                 <div
                   key={s.key}
-                  className="p-3 rounded-lg bg-slate-900/60 border border-slate-700/80 flex flex-col md:flex-row md:items-center justify-between gap-3"
+                  className="p-3.5 rounded-lg bg-slate-900/60 border border-slate-700/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                 >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs font-semibold text-slate-200">{s.label}</span>
                       <code className="text-[10px] text-slate-400 font-mono">({s.key})</code>
                       {s.locked ? (
@@ -125,6 +125,11 @@ export default function SettingsPage() {
                         </span>
                       )}
                     </div>
+                    {s.locked && (
+                      <p className="text-[10px] text-amber-400/80 mt-1">
+                        Locked: Phase has moved past the allowed configuration window.
+                      </p>
+                    )}
                     {msg && (
                       <div
                         className={`text-[11px] mt-1 ${
@@ -136,7 +141,7 @@ export default function SettingsPage() {
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
                     <input
                       type="number"
                       disabled={s.locked || updatingKey === s.key}
@@ -147,12 +152,12 @@ export default function SettingsPage() {
                           [s.key]: e.target.value,
                         })
                       }
-                      className="w-24 px-2.5 py-1 text-xs rounded bg-slate-900 text-slate-100 border border-slate-700 focus:outline-none focus:border-accent disabled:opacity-50 disabled:bg-slate-950"
+                      className="flex-1 sm:w-28 min-w-0 px-2.5 py-1.5 text-xs rounded bg-slate-900 text-slate-100 border border-slate-700 focus:outline-none focus:border-accent disabled:opacity-50 disabled:bg-slate-950"
                     />
                     <button
                       disabled={s.locked || updatingKey === s.key}
                       onClick={() => handleSave(s.key)}
-                      className="px-3 py-1 text-xs font-semibold rounded bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-500 transition-colors disabled:opacity-40"
+                      className="px-4 py-1.5 text-xs font-semibold rounded bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-500 transition-colors disabled:opacity-40 shrink-0"
                     >
                       {updatingKey === s.key ? 'Saving...' : 'Save'}
                     </button>
