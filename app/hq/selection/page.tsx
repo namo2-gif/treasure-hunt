@@ -2,19 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-
-const HQNav = () => (
-  <nav className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs font-medium text-slate-400">
-    <Link href="/hq" className="hover:text-accent transition-colors">Dashboard</Link>
-    <Link href="/hq/teams" className="hover:text-accent transition-colors">Teams & Students</Link>
-    <Link href="/hq/selection" className="text-accent">Selection</Link>
-    <Link href="/hq/content" className="hover:text-accent transition-colors">Content</Link>
-    <Link href="/hq/qr" className="hover:text-accent transition-colors">QR Locations</Link>
-    <Link href="/hq/interventions" className="hover:text-accent transition-colors">Interventions</Link>
-    <Link href="/hq/logs" className="hover:text-accent transition-colors">Log & Export</Link>
-    <Link href="/hq/settings" className="hover:text-accent transition-colors">Settings</Link>
-  </nav>
-);
+import { adminFetch, AdminFetchError } from '@/lib/admin-fetch';
+import ErrorBanner from '@/components/hq/ErrorBanner';
 
 interface RankedTeam {
   rank: number;
@@ -38,14 +27,14 @@ export default function SelectionPage() {
 
   async function loadData() {
     try {
-      const res = await fetch('/api/admin/selection');
-      const data = await res.json();
+      const data = await adminFetch<any>('/api/admin/selection');
       if (data.ok) {
         setTeams(data.teams || []);
         setPhase(data.phase || 'setup');
         setTopN(data.topN || 25);
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err instanceof AdminFetchError && err.status === 401) return;
       console.error(err);
     } finally {
       setLoading(false);
@@ -70,12 +59,11 @@ export default function SelectionPage() {
     setUpdatingTeam(teamId);
     setMsg(null);
     try {
-      const res = await fetch('/api/admin/selection', {
+      const data = await adminFetch<any>('/api/admin/selection', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ teamId, qualified: !currentQualified }),
       });
-      const data = await res.json();
       if (data.ok) {
         setTeams((prev) =>
           prev.map((t) => (t.teamId === teamId ? { ...t, qualified: !currentQualified } : t))
@@ -132,14 +120,17 @@ export default function SelectionPage() {
     : teams;
 
   return (
-    <div className="w-full max-w-5xl mx-auto py-6 px-4">
+    <div className="w-full space-y-6">
       {/* Header */}
-      <div className="pb-4 border-b border-slate-700">
+      <div className="pb-5 border-b border-slate-800 flex items-center justify-between">
         <div>
-          <span className="px-2 py-0.5 text-xs font-semibold uppercase bg-accent/20 text-accent rounded">HQ</span>
-          <h1 className="text-xl font-bold text-slate-100 mt-1">Round 2 Team Selection</h1>
+          <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-accent/20 text-accent rounded border border-accent/30">
+            Advancement & Cutoff
+          </span>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-100 mt-1">
+            Round 2 Team Selection
+          </h1>
         </div>
-        <HQNav />
       </div>
 
       {/* Info & Banner */}

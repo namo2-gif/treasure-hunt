@@ -3,6 +3,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { adminFetch, AdminFetchError } from '@/lib/admin-fetch';
+import ErrorBanner from '@/components/hq/ErrorBanner';
 
 interface Member {
   id: string;
@@ -23,19 +25,6 @@ interface Team {
   members: Member[];
 }
 
-const HQNav = () => (
-  <nav className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs font-medium text-slate-400">
-    <Link href="/hq" className="hover:text-accent transition-colors">Dashboard</Link>
-    <Link href="/hq/teams" className="text-accent">Teams & Students</Link>
-    <Link href="/hq/selection" className="hover:text-accent transition-colors">Selection</Link>
-    <Link href="/hq/content" className="hover:text-accent transition-colors">Content</Link>
-    <Link href="/hq/qr" className="hover:text-accent transition-colors">QR Locations</Link>
-    <Link href="/hq/interventions" className="hover:text-accent transition-colors">Interventions</Link>
-    <Link href="/hq/logs" className="hover:text-accent transition-colors">Log & Export</Link>
-    <Link href="/hq/settings" className="hover:text-accent transition-colors">Settings</Link>
-  </nav>
-);
-
 export default function TeamsPage() {
   const router = useRouter();
   const [teams, setTeams] = useState<Team[]>([]);
@@ -51,9 +40,7 @@ export default function TeamsPage() {
 
   const fetchTeams = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/teams-full');
-      if (res.status === 401) { router.push('/hq/login'); return; }
-      const data = await res.json();
+      const data = await adminFetch<any>('/api/admin/teams-full');
       if (data.ok) {
         setTeams(data.teams);
         setError(null);
@@ -61,11 +48,12 @@ export default function TeamsPage() {
         setError(data.message || 'Failed to load teams');
       }
     } catch (e: any) {
+      if (e instanceof AdminFetchError && e.status === 401) return;
       setError(e.message || 'Network error');
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     fetchTeams();
@@ -76,12 +64,11 @@ export default function TeamsPage() {
   async function studentAction(studentId: string, action: string, body: object = {}) {
     setActionLoading(`${studentId}:${action}`);
     try {
-      const res = await fetch(`/api/admin/students/${studentId}/${action}`, {
+      const data = await adminFetch<any>(`/api/admin/students/${studentId}/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
       if (!data.ok) {
         alert(`Error: ${data.message || data.code}`);
       } else {
@@ -100,12 +87,11 @@ export default function TeamsPage() {
   async function teamPatch(teamId: string, patch: object) {
     setActionLoading(`team:${teamId}`);
     try {
-      const res = await fetch(`/api/admin/teams/${teamId}`, {
+      const data = await adminFetch<any>(`/api/admin/teams/${teamId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(patch),
       });
-      const data = await res.json();
       if (!data.ok) {
         alert(`Error: ${data.message || data.code}`);
       } else {
@@ -137,20 +123,19 @@ export default function TeamsPage() {
   );
 
   return (
-    <div className="w-full max-w-5xl mx-auto py-6 px-4">
-      <div className="pb-4 border-b border-slate-700">
-        <div className="flex items-center justify-between">
-          <div>
-            <span className="px-2 py-0.5 text-xs font-semibold uppercase bg-accent/20 text-accent rounded">HQ</span>
-            <h1 className="text-xl font-bold text-slate-100 mt-1">Teams & Students</h1>
-          </div>
+    <div className="w-full space-y-6">
+      <div className="pb-5 border-b border-slate-800 flex items-center justify-between">
+        <div>
+          <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-accent/20 text-accent rounded border border-accent/30">
+            Rosters & Passcodes
+          </span>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-100 mt-1">
+            Teams & Students
+          </h1>
         </div>
-        <HQNav />
       </div>
 
-      {error && (
-        <div className="mt-4 p-3 bg-red-950/60 border border-red-800 text-red-200 text-xs rounded-lg">{error}</div>
-      )}
+      <ErrorBanner message={error} onRetry={fetchTeams} />
 
       <div className="mt-4">
         <input

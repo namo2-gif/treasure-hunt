@@ -3,6 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { adminFetch, AdminFetchError } from '@/lib/admin-fetch';
+import ErrorBanner from '@/components/hq/ErrorBanner';
 
 interface QRLocation {
   id: number;
@@ -32,18 +34,14 @@ export default function AdminQRManagementPage() {
 
   async function fetchQRs() {
     try {
-      const res = await fetch('/api/admin/qr');
-      if (res.status === 401) {
-        router.push('/hq/login');
-        return;
-      }
-      const data = await res.json();
+      const data = await adminFetch<any>('/api/admin/qr');
       if (data.ok) {
         setQrs(data.qrs);
       } else {
         setError(data.message || 'Failed to fetch QR locations');
       }
     } catch (err: any) {
+      if (err instanceof AdminFetchError && err.status === 401) return;
       setError(err?.message || 'Network error');
     } finally {
       setLoading(false);
@@ -61,12 +59,11 @@ export default function AdminQRManagementPage() {
     setCreating(true);
     setError(null);
     try {
-      const res = await fetch('/api/admin/qr', {
+      const data = await adminFetch<any>('/api/admin/qr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newName.trim(), capacity: newCapacity }),
       });
-      const data = await res.json();
       if (data.ok) {
         setNewName('');
         setNewCapacity(12);
@@ -83,12 +80,11 @@ export default function AdminQRManagementPage() {
 
   async function handleToggleActive(qr: QRLocation) {
     try {
-      const res = await fetch(`/api/admin/qr/${qr.id}`, {
+      const data = await adminFetch<any>(`/api/admin/qr/${qr.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ active: !qr.active }),
       });
-      const data = await res.json();
       if (data.ok) {
         await fetchQRs();
       } else {
@@ -101,12 +97,11 @@ export default function AdminQRManagementPage() {
 
   async function handleSaveCapacity(id: number) {
     try {
-      const res = await fetch(`/api/admin/qr/${id}`, {
+      const data = await adminFetch<any>(`/api/admin/qr/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ capacity: editCapacityVal }),
       });
-      const data = await res.json();
       if (data.ok) {
         setEditingId(null);
         await fetchQRs();
@@ -123,12 +118,11 @@ export default function AdminQRManagementPage() {
       return;
     }
     try {
-      const res = await fetch(`/api/admin/qr/${id}`, {
+      const data = await adminFetch<any>(`/api/admin/qr/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ regenerateToken: true }),
       });
-      const data = await res.json();
       if (data.ok) {
         await fetchQRs();
       } else {
@@ -143,8 +137,7 @@ export default function AdminQRManagementPage() {
     if (!window.confirm(`Delete QR location "${name}"?`)) return;
 
     try {
-      const res = await fetch(`/api/admin/qr/${id}`, { method: 'DELETE' });
-      const data = await res.json();
+      const data = await adminFetch<any>(`/api/admin/qr/${id}`, { method: 'DELETE' });
       if (data.ok) {
         await fetchQRs();
       } else {
@@ -156,19 +149,16 @@ export default function AdminQRManagementPage() {
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto py-6 px-4">
+    <div className="w-full space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-700">
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-5 border-b border-slate-800">
         <div>
-          <div className="flex items-center gap-2">
-            <Link
-              href="/hq"
-              className="text-xs font-semibold text-accent hover:underline uppercase tracking-wide"
-            >
-              ← HQ Dashboard
-            </Link>
-          </div>
-          <h1 className="text-xl font-bold text-slate-100 mt-1">QR Location Management</h1>
+          <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-accent/20 text-accent rounded border border-accent/30">
+            Checkpoints & Capacity
+          </span>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-100 mt-1">
+            QR Location Management
+          </h1>
         </div>
         <div className="flex items-center gap-3">
           <Link
@@ -181,11 +171,7 @@ export default function AdminQRManagementPage() {
         </div>
       </div>
 
-      {error && (
-        <div className="mt-4 p-3 bg-red-950/60 border border-red-800 text-red-200 text-xs rounded-lg">
-          {error}
-        </div>
-      )}
+      <ErrorBanner message={error} onRetry={fetchQRs} />
 
       {/* Add New QR Form */}
       <div className="mt-6 p-5 rounded-xl bg-slate-800/80 border border-slate-700">

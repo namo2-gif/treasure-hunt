@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { adminFetch, AdminFetchError } from '@/lib/admin-fetch';
+import ErrorBanner from '@/components/hq/ErrorBanner';
 
 interface DashboardData {
   ok: boolean;
@@ -56,77 +57,14 @@ interface DashboardData {
   }>;
 }
 
-const HQNav = ({ active }: { active: string }) => {
-  const [open, setOpen] = useState(false);
-  const links = [
-    { href: '/hq', label: 'Dashboard' },
-    { href: '/hq/event', label: 'Event Control' },
-    { href: '/hq/teams', label: 'Teams & Students' },
-    { href: '/hq/selection', label: 'Selection' },
-    { href: '/hq/standings', label: 'Standings' },
-    { href: '/hq/round3', label: 'Round 3' },
-    { href: '/hq/content', label: 'Content' },
-    { href: '/hq/qr', label: 'QR Locations' },
-    { href: '/hq/interventions', label: 'Interventions' },
-    { href: '/hq/logs', label: 'Log & Export' },
-    { href: '/hq/settings', label: 'Settings' },
-  ];
-
-  return (
-    <div>
-      {/* Mobile Menu Button */}
-      <div className="lg:hidden mt-2">
-        <button
-          onClick={() => setOpen(!open)}
-          className="px-3 py-1.5 text-xs font-semibold rounded bg-slate-800 text-slate-200 border border-slate-700 flex items-center gap-2"
-        >
-          <span>☰ Menu</span>
-          <span className="text-accent">{links.find((l) => l.href === active)?.label || 'Navigation'}</span>
-        </button>
-        {open && (
-          <div className="mt-2 p-3 rounded-lg bg-slate-900 border border-slate-700 flex flex-col gap-2">
-            {links.map((l) => (
-              <Link
-                key={l.href}
-                href={l.href}
-                onClick={() => setOpen(false)}
-                className={`text-xs py-1 px-2 rounded ${
-                  active === l.href ? 'bg-accent/20 text-accent font-bold' : 'text-slate-300 hover:text-accent'
-                }`}
-              >
-                {l.label}
-              </Link>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Desktop Navigation */}
-      <nav className="hidden lg:flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs font-medium text-slate-400">
-        {links.map((l) => (
-          <Link
-            key={l.href}
-            href={l.href}
-            className={`hover:text-accent transition-colors ${
-              active === l.href ? 'text-accent font-semibold' : ''
-            }`}
-          >
-            {l.label}
-          </Link>
-        ))}
-      </nav>
-    </div>
-  );
-};
-
 export default function AdminHQDashboard() {
-  const router = useRouter();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [addMinutes, setAddMinutes] = useState(5);
   const [searchTerm, setSearchTerm] = useState('');
+
   const lastFetchRef = useRef<{ local: number; eventNow: number; paused: boolean }>({
     local: Date.now(),
     eventNow: Date.now(),
@@ -136,12 +74,7 @@ export default function AdminHQDashboard() {
 
   async function fetchDashboard() {
     try {
-      const res = await fetch('/api/admin/dashboard');
-      if (res.status === 401) {
-        router.push('/hq/login');
-        return;
-      }
-      const json: DashboardData = await res.json();
+      const json: DashboardData = await adminFetch<DashboardData>('/api/admin/dashboard');
       if (json.ok) {
         setData(json);
         setError(null);
@@ -155,6 +88,7 @@ export default function AdminHQDashboard() {
         setError(json.primaryAction?.reason || 'Failed to load dashboard');
       }
     } catch (err: any) {
+      if (err instanceof AdminFetchError && err.status === 401) return;
       setError(err?.message || 'Network error');
     } finally {
       setLoading(false);
@@ -188,12 +122,11 @@ export default function AdminHQDashboard() {
 
     setActionLoading(true);
     try {
-      const res = await fetch(`/api/admin/event/${action}`, {
+      const result = await adminFetch<any>(`/api/admin/event/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload ?? {}),
       });
-      const result = await res.json();
       if (!result.ok) {
         alert(`Action failed: ${result.message || result.code}`);
       } else {
@@ -204,12 +137,6 @@ export default function AdminHQDashboard() {
     } finally {
       setActionLoading(false);
     }
-  }
-
-  async function handleLogout() {
-    await fetch('/api/admin/logout', { method: 'POST' });
-    router.push('/hq/login');
-    router.refresh();
   }
 
   function getDeadlineCountdown(): { label: string; text: string } | null {
@@ -269,53 +196,72 @@ export default function AdminHQDashboard() {
   const breakMmSs = `${Math.floor(breakSec / 60).toString().padStart(2, '0')}:${(breakSec % 60).toString().padStart(2, '0')}`;
 
   return (
-    <div className="w-full max-w-7xl mx-auto py-6 px-4">
+    <div className="w-full space-y-6">
       {/* Top Header */}
-      <div className="flex items-center justify-between pb-4 border-b border-slate-700">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-5 border-b border-slate-800">
         <div>
           <div className="flex items-center gap-2">
-            <span className="px-2 py-0.5 text-xs font-semibold uppercase bg-accent/20 text-accent rounded">
-              HQ Control
+            <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-accent/20 text-accent rounded border border-accent/30">
+              HQ Live Telemetry
             </span>
           </div>
-          <h1 className="text-xl font-bold text-slate-100 mt-1">Campus Treasure Hunt</h1>
-          <HQNav active="/hq" />
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-100 mt-1">
+            Operations Dashboard
+          </h1>
         </div>
-        <button
-          onClick={handleLogout}
-          className="px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-600 transition-colors"
-        >
-          Logout
-        </button>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => fetchDashboard()}
+            disabled={loading}
+            className="px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors flex items-center gap-1.5 shadow-sm"
+          >
+            <svg
+              className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            <span>Refresh</span>
+          </button>
+        </div>
       </div>
 
-      {error && (
-        <div className="mt-4 p-3 bg-red-950/60 border border-red-800 text-red-200 text-sm rounded-lg">
-          {error}
-        </div>
-      )}
+      <ErrorBanner message={error} onRetry={fetchDashboard} />
 
       {/* Top Row: Phase, Clock & Action Controls */}
       {data && (
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Phase & Clock Card */}
-          <div className="p-4 sm:p-5 rounded-xl bg-slate-800/90 border border-slate-700 flex flex-col justify-between">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-xs uppercase tracking-wide text-slate-400">Current Phase</span>
-                <div className="text-xl sm:text-2xl font-black text-accent mt-0.5 uppercase tracking-wider">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {/* Card 1: Phase & Event Clock */}
+          <div className="p-4 sm:p-5 rounded-xl bg-slate-900/90 border border-slate-800 shadow-sm flex flex-col justify-between">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  Current Phase
+                </span>
+                <div className="text-xl sm:text-2xl font-black text-accent mt-0.5 uppercase tracking-wide truncate">
                   {phase.replace('_', ' ')}
                 </div>
               </div>
-              <div className="text-right">
-                <span className="text-xs uppercase tracking-wide text-slate-400">Event Clock</span>
+
+              <div className="text-right shrink-0">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                  Event Clock
+                </span>
                 <div className="flex items-center justify-end gap-1.5 mt-0.5">
                   {data.clock.paused && (
                     <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase bg-amber-500 text-slate-950 rounded animate-pulse">
                       PAUSED
                     </span>
                   )}
-                  <span className="font-mono text-lg sm:text-xl font-bold text-slate-200">
+                  <span className="font-mono text-base sm:text-lg font-bold text-slate-100">
                     {new Date(clientEventNow).toLocaleTimeString()}
                   </span>
                 </div>
@@ -323,21 +269,29 @@ export default function AdminHQDashboard() {
             </div>
 
             {countdown && (
-              <div className="mt-3 p-2.5 rounded-lg bg-slate-900/80 border border-slate-700/80 flex items-center justify-between">
-                <span className="text-xs font-medium text-slate-300 uppercase">{countdown.label}</span>
-                <span className="font-mono text-xl font-extrabold text-accent">{countdown.text}</span>
+              <div className="mt-3 p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-300 uppercase tracking-wide">
+                  {countdown.label}
+                </span>
+                <span className="font-mono text-lg sm:text-xl font-extrabold text-accent">
+                  {countdown.text}
+                </span>
               </div>
             )}
           </div>
 
-          {/* Primary Action Card */}
-          <div className="p-4 sm:p-5 rounded-xl bg-slate-800/90 border border-slate-700 flex flex-col justify-between">
+          {/* Card 2: Primary Action Card */}
+          <div className="p-4 sm:p-5 rounded-xl bg-slate-900/90 border border-slate-800 shadow-sm flex flex-col justify-between">
             <div>
-              <span className="text-xs uppercase tracking-wide text-slate-400">Phase Transition</span>
-              <p className="text-xs text-slate-400 mt-1">Advance event to the next scheduled stage.</p>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                Phase Transition
+              </span>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Advance event to the next scheduled stage.
+              </p>
             </div>
 
-            <div className="mt-3">
+            <div className="mt-4">
               {isBreak ? (
                 <button
                   disabled={actionLoading}
@@ -354,7 +308,7 @@ export default function AdminHQDashboard() {
                       }
                     }
                   }}
-                  className="w-full py-3 px-4 rounded-lg bg-accent text-slate-950 hover:bg-amber-400 font-bold text-sm transition-colors disabled:opacity-40 shadow-md active:scale-[0.99]"
+                  className="w-full min-h-[44px] py-2.5 px-4 rounded-lg bg-accent text-slate-950 hover:bg-amber-400 font-bold text-xs sm:text-sm transition-all disabled:opacity-40 shadow active:scale-[0.99]"
                 >
                   {actionLoading
                     ? 'Processing...'
@@ -373,58 +327,79 @@ export default function AdminHQDashboard() {
                         `Proceed with action: "${data.primaryAction!.label}"?`
                       )
                     }
-                    className="w-full py-3 px-4 rounded-lg bg-accent text-slate-950 hover:bg-amber-400 font-bold text-sm transition-colors disabled:opacity-40 shadow-md active:scale-[0.99]"
+                    className="w-full min-h-[44px] py-2.5 px-4 rounded-lg bg-accent text-slate-950 hover:bg-amber-400 font-bold text-xs sm:text-sm transition-all disabled:opacity-40 shadow active:scale-[0.99]"
                   >
                     {actionLoading ? 'Processing...' : data.primaryAction.label}
                   </button>
                   {data.primaryAction.reason && (
-                    <p className="text-xs text-amber-400 mt-1 text-center">
+                    <p className="text-xs text-amber-400 mt-1.5 text-center">
                       Notice: {data.primaryAction.reason}
                     </p>
                   )}
                 </div>
               ) : (
-                <div className="text-xs text-slate-400 text-center py-2">Event completed</div>
+                <div className="text-xs text-slate-400 text-center py-2.5 font-medium rounded-lg bg-slate-950/60 border border-slate-800">
+                  Event Completed
+                </div>
               )}
             </div>
           </div>
 
-          {/* Quick Clock Interventions */}
-          <div className="p-4 sm:p-5 rounded-xl bg-slate-800/90 border border-slate-700 flex flex-col justify-between">
-            <span className="text-xs uppercase tracking-wide text-slate-400">Clock Adjustment</span>
-            <div className="mt-2 flex items-center gap-2">
+          {/* Card 3: Quick Clock Interventions */}
+          <div className="p-4 sm:p-5 rounded-xl bg-slate-900/90 border border-slate-800 shadow-sm flex flex-col justify-between md:col-span-2 xl:col-span-1">
+            <div>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                Clock Adjustment
+              </span>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Pause or extend all countdowns.
+              </p>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
               {data.clock.paused ? (
                 <button
                   disabled={actionLoading}
                   onClick={() => handleAction('resume', undefined, 'Resume event clock?')}
-                  className="flex-1 py-2 px-3 text-xs font-bold rounded bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+                  className="flex-1 min-h-[42px] py-2 px-3 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors shadow"
                 >
-                  Resume
+                  Resume Clock
                 </button>
               ) : (
                 <button
-                  disabled={actionLoading || !['r1_running', 'r2_running', 'r2_break', 'r3_open'].includes(phase)}
+                  disabled={
+                    actionLoading ||
+                    !['r1_running', 'r2_running', 'r2_break', 'r3_open'].includes(phase)
+                  }
                   onClick={() => handleAction('pause', undefined, 'Pause event clock?')}
-                  className="flex-1 py-2 px-3 text-xs font-bold rounded bg-amber-600 hover:bg-amber-500 text-white transition-colors disabled:opacity-40"
+                  className="flex-1 min-h-[42px] py-2 px-3 text-xs font-bold rounded-lg bg-amber-600 hover:bg-amber-500 text-white transition-colors disabled:opacity-40 shadow"
                 >
-                  Pause
+                  Pause Clock
                 </button>
               )}
-              <div className="flex items-center gap-1">
+
+              <div className="flex items-center gap-1.5">
                 <input
                   type="number"
                   min="1"
                   max="120"
                   value={addMinutes}
-                  onChange={(e) => setAddMinutes(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="w-14 px-2 py-1.5 text-xs rounded bg-slate-900 text-slate-100 border border-slate-700 focus:outline-none focus:border-accent"
+                  onChange={(e) =>
+                    setAddMinutes(Math.max(1, parseInt(e.target.value) || 1))
+                  }
+                  className="w-16 h-[42px] px-2 text-xs rounded-lg bg-slate-950 text-slate-100 border border-slate-700 focus:outline-none focus:border-accent text-center font-mono"
+                  aria-label="Add minutes"
                 />
                 <button
                   disabled={actionLoading}
                   onClick={() =>
-                    handleAction('add-time', { minutes: addMinutes }, `Add ${addMinutes}m?`)
+                    handleAction(
+                      'add-time',
+                      { minutes: addMinutes },
+                      `Add ${addMinutes}m to all event timers?`
+                    )
                   }
-                  className="py-1.5 px-2.5 text-xs font-bold rounded bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600"
+                  className="min-h-[42px] px-3.5 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 active:scale-95 transition-all whitespace-nowrap shadow"
                 >
                   +Time
                 </button>
@@ -434,74 +409,172 @@ export default function AdminHQDashboard() {
         </div>
       )}
 
-      {/* Main Grid: Teams Table (Laptop full width, mobile overflow-x-auto) + QR Counts */}
+      {/* Main Grid: Teams Overview (Fluid Left) + QR Counts (320px Right) */}
       {data && (
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Teams Table (3 Columns) */}
-          <div className="lg:col-span-3 p-4 sm:p-5 rounded-xl bg-slate-800/80 border border-slate-700 flex flex-col">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6 items-start">
+          {/* Teams Overview */}
+          <div className="p-4 sm:p-5 rounded-xl bg-slate-900/90 border border-slate-800 shadow-sm flex flex-col">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
               <div>
-                <h2 className="text-sm font-semibold text-slate-200 uppercase tracking-wide">
-                  Teams Overview ({data.stats.totalTeams} total, {data.stats.qualifiedTeams} qualified)
+                <h2 className="text-sm font-bold text-slate-200 uppercase tracking-wider">
+                  Teams Overview
                 </h2>
-                <span className="text-xs text-slate-400">Shows Round 2 live scores and rank</span>
+                <span className="text-xs text-slate-400">
+                  {data.stats.totalTeams} total squads &bull; {data.stats.qualifiedTeams} qualified
+                </span>
               </div>
               <input
                 type="text"
                 placeholder="Search team ID or name..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full sm:w-56 px-3 py-1.5 text-xs rounded bg-slate-900 text-slate-100 border border-slate-700 focus:outline-none focus:border-accent"
+                className="w-full sm:w-60 min-h-[38px] px-3 py-1.5 text-xs rounded-lg bg-slate-950 text-slate-100 border border-slate-700 focus:outline-none focus:border-accent"
               />
             </div>
 
-            <div className="overflow-x-auto flex-1">
+            {/* Phone View: Card List (< 768px) */}
+            <div className="block md:hidden space-y-3">
+              {filteredTeams.map((team) => (
+                <div
+                  key={team.id}
+                  className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2.5 shadow-sm"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="px-2 py-0.5 text-xs font-mono font-bold bg-accent/20 text-accent rounded border border-accent/30 shrink-0">
+                        {team.id}
+                      </span>
+                      <span className="font-semibold text-slate-100 text-sm truncate">
+                        {team.name}
+                      </span>
+                    </div>
+
+                    <div className="shrink-0">
+                      {team.withdrawn ? (
+                        <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded bg-red-500/20 text-red-400 border border-red-500/30">
+                          Withdrawn
+                        </span>
+                      ) : team.qualified ? (
+                        <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                          Qualified
+                        </span>
+                      ) : (
+                        <span className="px-1.5 py-0.5 text-[10px] text-slate-500 bg-slate-900 rounded">
+                          R1
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-800/80">
+                    <div className="bg-slate-900/60 p-2 rounded-lg text-center">
+                      <span className="text-[10px] text-slate-400 block uppercase tracking-wider">
+                        R2 Rank
+                      </span>
+                      <span className="font-bold text-slate-200 text-xs sm:text-sm">
+                        {team.r2Rank ? `#${team.r2Rank}` : '-'}
+                      </span>
+                    </div>
+
+                    <div className="bg-slate-900/60 p-2 rounded-lg text-center">
+                      <span className="text-[10px] text-slate-400 block uppercase tracking-wider">
+                        R2 Pts
+                      </span>
+                      <span className="font-bold text-accent text-xs sm:text-sm">
+                        {team.r2Points !== null && team.r2Points !== undefined
+                          ? team.r2Points
+                          : '-'}
+                      </span>
+                    </div>
+
+                    <div className="bg-slate-900/60 p-2 rounded-lg text-center">
+                      <span className="text-[10px] text-slate-400 block uppercase tracking-wider">
+                        Last Score
+                      </span>
+                      <span className="font-mono text-slate-300 text-[11px]">
+                        {formatTime(team.r2LastMs)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
+                    <span>Members: <strong className="text-slate-300">{team.n}</strong></span>
+                    {team.runs && team.runs.length > 0 && (
+                      <span className="text-[10px] text-accent/80 font-mono">
+                        Run {team.runs[team.runs.length - 1].run} active
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {filteredTeams.length === 0 && (
+                <div className="py-8 text-center text-slate-400 text-xs bg-slate-950/40 rounded-xl border border-slate-800">
+                  No matching teams found.
+                </div>
+              )}
+            </div>
+
+            {/* Laptop / Tablet View: Wide Table (>= 768px) */}
+            <div className="hidden md:block overflow-x-auto rounded-lg border border-slate-800">
               <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-700 text-slate-400 uppercase text-[10px] tracking-wider">
-                    <th className="py-2 px-2.5">Team</th>
-                    <th className="py-2 px-2.5">Members</th>
-                    <th className="py-2 px-2.5">Status</th>
-                    <th className="py-2 px-2.5 text-right">R2 Rank</th>
-                    <th className="py-2 px-2.5 text-right">R2 Points</th>
-                    <th className="py-2 px-2.5 text-right">Last Scoring</th>
+                <thead className="sticky top-0 bg-slate-950/90 backdrop-blur z-10">
+                  <tr className="border-b border-slate-800 text-slate-400 uppercase text-[10px] tracking-wider">
+                    <th className="py-3 px-3">Team</th>
+                    <th className="py-3 px-3">Members</th>
+                    <th className="py-3 px-3">Status</th>
+                    <th className="py-3 px-3 text-right">R2 Rank</th>
+                    <th className="py-3 px-3 text-right">R2 Points</th>
+                    <th className="py-3 px-3 text-right">Last Scoring</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60 font-mono">
+                <tbody className="divide-y divide-slate-800/60 bg-slate-900/40 font-mono">
                   {filteredTeams.map((team) => (
-                    <tr key={team.id} className="hover:bg-slate-700/30 transition-colors">
-                      <td className="py-2.5 px-2.5 font-sans font-bold text-slate-100">
-                        <span className="text-accent mr-1.5">{team.id}</span>
+                    <tr
+                      key={team.id}
+                      className="hover:bg-slate-800/50 transition-colors"
+                    >
+                      <td className="py-2.5 px-3 font-sans font-bold text-slate-100">
+                        <span className="px-1.5 py-0.5 text-xs bg-accent/20 text-accent rounded mr-2 font-mono">
+                          {team.id}
+                        </span>
                         <span>{team.name}</span>
                       </td>
-                      <td className="py-2.5 px-2.5 text-slate-300 font-sans">{team.n}</td>
-                      <td className="py-2.5 px-2.5 font-sans">
+                      <td className="py-2.5 px-3 text-slate-300 font-sans">
+                        {team.n}
+                      </td>
+                      <td className="py-2.5 px-3 font-sans">
                         {team.withdrawn ? (
-                          <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase rounded bg-red-500/20 text-red-400">
+                          <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded bg-red-500/20 text-red-400 border border-red-500/30">
                             Withdrawn
                           </span>
                         ) : team.qualified ? (
-                          <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase rounded bg-emerald-500/20 text-emerald-400">
+                          <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                             Qualified
                           </span>
                         ) : (
-                          <span className="text-slate-400 text-[11px]">-</span>
+                          <span className="text-slate-500 text-xs">-</span>
                         )}
                       </td>
-                      <td className="py-2.5 px-2.5 text-right font-bold text-slate-200">
+                      <td className="py-2.5 px-3 text-right font-bold text-slate-200">
                         {team.r2Rank ? `#${team.r2Rank}` : '-'}
                       </td>
-                      <td className="py-2.5 px-2.5 text-right font-bold text-accent">
-                        {team.r2Points !== null && team.r2Points !== undefined ? team.r2Points : '-'}
+                      <td className="py-2.5 px-3 text-right font-bold text-accent">
+                        {team.r2Points !== null && team.r2Points !== undefined
+                          ? team.r2Points
+                          : '-'}
                       </td>
-                      <td className="py-2.5 px-2.5 text-right text-slate-400">
+                      <td className="py-2.5 px-3 text-right text-slate-400">
                         {formatTime(team.r2LastMs)}
                       </td>
                     </tr>
                   ))}
                   {filteredTeams.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="py-6 text-center text-slate-400 font-sans">
+                      <td
+                        colSpan={6}
+                        className="py-8 text-center text-slate-400 font-sans text-xs"
+                      >
                         No matching teams found.
                       </td>
                     </tr>
@@ -511,38 +584,57 @@ export default function AdminHQDashboard() {
             </div>
           </div>
 
-          {/* QR Locations (1 Column Side) */}
-          <div className="p-4 sm:p-5 rounded-xl bg-slate-800/80 border border-slate-700">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-slate-200 uppercase tracking-wide">
-                QR Capacity ({data.stats.activeQRs} active)
-              </h2>
-              <Link href="/hq/qr" className="text-xs font-semibold text-accent hover:underline">
-                Manage →
+          {/* QR Locations (320px Side Column on Laptop, Stacked on Mobile) */}
+          <div className="p-4 sm:p-5 rounded-xl bg-slate-900/90 border border-slate-800 shadow-sm flex flex-col">
+            <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-800">
+              <div>
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                  QR Capacity
+                </h2>
+                <span className="text-[11px] text-slate-400">
+                  {data.stats.activeQRs} of {data.qrs.length} active
+                </span>
+              </div>
+              <Link
+                href="/hq/qr"
+                className="text-xs font-semibold text-accent hover:text-amber-400 transition-colors flex items-center gap-1"
+              >
+                <span>Manage</span>
+                <span>→</span>
               </Link>
             </div>
-            <div className="space-y-2">
+
+            <div className="space-y-2 overflow-y-auto max-h-[500px] lg:max-h-[640px] pr-1">
               {data.qrs.map((qr) => (
                 <div
                   key={qr.id}
-                  className="flex items-center justify-between p-2 rounded bg-slate-900/60 border border-slate-700 text-xs"
+                  className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/80 hover:border-slate-700 transition-colors"
                 >
-                  <div className="min-w-0 pr-1">
-                    <span className="font-semibold text-slate-200 block truncate">{qr.name}</span>
-                    <span className="text-[10px] text-slate-400">Cap: {qr.capacity}</span>
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span
+                        className={`w-2 h-2 rounded-full shrink-0 ${
+                          qr.active
+                            ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50'
+                            : 'bg-red-500'
+                        }`}
+                      />
+                      <span className="font-semibold text-slate-200 text-xs truncate">
+                        {qr.name}
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono text-slate-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800 shrink-0">
+                      Cap: {qr.capacity}
+                    </span>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[11px] text-slate-400">
-                      R1: <b className="text-slate-200">{qr.run1Count}</b>
+
+                  <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-900 font-mono">
+                    <span>
+                      Run 1: <strong className="text-slate-200">{qr.run1Count}</strong>
                     </span>
-                    <span className="text-[11px] text-slate-400">
-                      R2: <b className="text-slate-200">{qr.run2Count}</b>
+                    <span>
+                      Run 2: <strong className="text-slate-200">{qr.run2Count}</strong>
                     </span>
-                    <span
-                      className={`w-2 h-2 rounded-full ${
-                        qr.active ? 'bg-emerald-500' : 'bg-red-500'
-                      }`}
-                    />
                   </div>
                 </div>
               ))}

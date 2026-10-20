@@ -2,19 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-
-const HQNav = () => (
-  <nav className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs font-medium text-slate-400">
-    <Link href="/hq" className="hover:text-accent transition-colors">Dashboard</Link>
-    <Link href="/hq/teams" className="hover:text-accent transition-colors">Teams & Students</Link>
-    <Link href="/hq/selection" className="hover:text-accent transition-colors">Selection</Link>
-    <Link href="/hq/content" className="hover:text-accent transition-colors">Content</Link>
-    <Link href="/hq/qr" className="hover:text-accent transition-colors">QR Locations</Link>
-    <Link href="/hq/interventions" className="hover:text-accent transition-colors">Interventions</Link>
-    <Link href="/hq/logs" className="text-accent">Log & Export</Link>
-    <Link href="/hq/settings" className="hover:text-accent transition-colors">Settings</Link>
-  </nav>
-);
+import { adminFetch, AdminFetchError } from '@/lib/admin-fetch';
+import ErrorBanner from '@/components/hq/ErrorBanner';
 
 interface LogEntry {
   id: number;
@@ -37,14 +26,14 @@ export default function LogsAndExportsPage() {
 
   async function fetchLogs(p = page) {
     try {
-      const res = await fetch(`/api/admin/log?page=${p}&limit=${limit}`);
-      const d = await res.json();
+      const d = await adminFetch<any>(`/api/admin/log?page=${p}&limit=${limit}`);
       if (d.ok) {
         setLogs(d.logs || []);
         setTotal(d.total || 0);
         setPage(d.page || p);
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err instanceof AdminFetchError && err.status === 401) return;
       console.error(err);
     } finally {
       setLoading(false);
@@ -68,14 +57,17 @@ export default function LogsAndExportsPage() {
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
   return (
-    <div className="w-full max-w-5xl mx-auto py-6 px-4">
+    <div className="w-full space-y-6">
       {/* Header */}
-      <div className="pb-4 border-b border-slate-700">
+      <div className="pb-5 border-b border-slate-800 flex items-center justify-between">
         <div>
-          <span className="px-2 py-0.5 text-xs font-semibold uppercase bg-accent/20 text-accent rounded">HQ</span>
-          <h1 className="text-xl font-bold text-slate-100 mt-1">Audit Log & CSV Exports</h1>
+          <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-accent/20 text-accent rounded border border-accent/30">
+            Compliance & Telemetry
+          </span>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-100 mt-1">
+            Audit Log & CSV Exports
+          </h1>
         </div>
-        <HQNav />
       </div>
 
       {/* CSV Exports Section */}

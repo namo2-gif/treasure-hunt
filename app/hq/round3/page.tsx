@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { adminFetch, AdminFetchError } from '@/lib/admin-fetch';
+import ErrorBanner from '@/components/hq/ErrorBanner';
 
 interface ZoneData {
   id: number;
@@ -111,15 +113,15 @@ export default function Round3AdminPage() {
   // Fetch Live Grid and Dashboard
   const fetchDashboard = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/dashboard');
-      const data = await res.json();
+      const data = await adminFetch<any>('/api/admin/dashboard');
       if (data.ok) {
         setPhase(data.state?.phase || 'setup');
         if (data.round3) {
           setR3Data(data.round3);
         }
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err instanceof AdminFetchError && err.status === 401) return;
       console.error(err);
     }
   }, []);
@@ -127,8 +129,7 @@ export default function Round3AdminPage() {
   // Fetch Setup Content
   const fetchSetup = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/round3/zones');
-      const data = await res.json();
+      const data = await adminFetch<any>('/api/admin/round3/zones');
       if (data.ok) {
         setZones(data.zones || []);
         setRiddles(data.riddles || []);
@@ -137,7 +138,8 @@ export default function Round3AdminPage() {
           setCodeValid(/^[1-9][A-Z]{3}$/.test(data.config.code));
         }
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err instanceof AdminFetchError && err.status === 401) return;
       console.error(err);
     }
   }, []);
@@ -146,12 +148,12 @@ export default function Round3AdminPage() {
   const fetchTeams = useCallback(async () => {
     setLoadingTeams(true);
     try {
-      const res = await fetch('/api/admin/round3/teams');
-      const data = await res.json();
+      const data = await adminFetch<any>('/api/admin/round3/teams');
       if (data.ok) {
         setR2Teams(data.teams || []);
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err instanceof AdminFetchError && err.status === 401) return;
       console.error(err);
     } finally {
       setLoadingTeams(false);
@@ -202,12 +204,11 @@ export default function Round3AdminPage() {
     setSavingSetup(true);
     setSetupMsg(null);
     try {
-      const res = await fetch('/api/admin/round3/config', {
+      const data = await adminFetch<any>('/api/admin/round3/config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: config.code.toUpperCase(), hintText: config.hintText }),
       });
-      const data = await res.json();
       if (data.ok) {
         setSetupMsg({ text: 'Round 3 code & hint saved', ok: true });
         fetchSetup();
@@ -224,12 +225,11 @@ export default function Round3AdminPage() {
   // Handle Save Zone
   async function handleSaveZone(id: number, name: string, findRiddle: string) {
     try {
-      const res = await fetch(`/api/admin/round3/zones/${id}`, {
+      const data = await adminFetch<any>(`/api/admin/round3/zones/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, findRiddle }),
       });
-      const data = await res.json();
       if (data.ok) {
         setSetupMsg({ text: `Zone ${id} updated`, ok: true });
         fetchSetup();
@@ -245,12 +245,11 @@ export default function Round3AdminPage() {
   async function handleRegenerateToken(id: number) {
     if (!confirm(`Are you sure you want to regenerate the start token for Zone ${id}? Any existing printed QR codes for this zone will stop working.`)) return;
     try {
-      const res = await fetch(`/api/admin/round3/zones/${id}`, {
+      const data = await adminFetch<any>(`/api/admin/round3/zones/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'regenerate-token' }),
       });
-      const data = await res.json();
       if (data.ok) {
         setSetupMsg({ text: `Zone ${id} token regenerated`, ok: true });
         fetchSetup();
@@ -265,12 +264,11 @@ export default function Round3AdminPage() {
   // Handle Save Riddle
   async function handleSaveRiddle(zone: number, box: number, text: string) {
     try {
-      const res = await fetch(`/api/admin/round3/riddles/${zone}/${box}`, {
+      const data = await adminFetch<any>(`/api/admin/round3/riddles/${zone}/${box}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
       });
-      const data = await res.json();
       if (data.ok) {
         setSetupMsg({ text: `Zone ${zone} Box ${box} riddle updated`, ok: true });
         fetchSetup();
@@ -286,12 +284,11 @@ export default function Round3AdminPage() {
   async function handleToggleEligible(teamId: string, current: boolean) {
     setTeamsMsg(null);
     try {
-      const res = await fetch('/api/admin/round3/eligible', {
+      const data = await adminFetch<any>('/api/admin/round3/eligible', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ teamId, eligible: !current }),
       });
-      const data = await res.json();
       if (data.ok) {
         fetchTeams();
       } else {
@@ -306,12 +303,11 @@ export default function Round3AdminPage() {
   async function handleAssignZone(teamId: string, zoneNum: number) {
     setTeamsMsg(null);
     try {
-      const res = await fetch('/api/admin/round3/assign-zone', {
+      const data = await adminFetch<any>('/api/admin/round3/assign-zone', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ teamId, zone: zoneNum }),
       });
-      const data = await res.json();
       if (data.ok) {
         fetchTeams();
       } else {
@@ -326,10 +322,9 @@ export default function Round3AdminPage() {
   async function handleRandomizeZones() {
     setTeamsMsg(null);
     try {
-      const res = await fetch('/api/admin/round3/randomize', {
+      const data = await adminFetch<any>('/api/admin/round3/randomize', {
         method: 'POST',
       });
-      const data = await res.json();
       if (data.ok) {
         setTeamsMsg({ text: 'Zones randomized successfully', ok: true });
         fetchTeams();
@@ -361,12 +356,11 @@ export default function Round3AdminPage() {
     if (overrideModal.action === 'reassign-zone') payload.zone = selectedReassignZone;
 
     try {
-      const res = await fetch(`/api/admin/round3/override/${overrideModal.action}`, {
+      const data = await adminFetch<any>(`/api/admin/round3/override/${overrideModal.action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
       if (data.ok) {
         setOverrideModal(null);
         setOverrideReason('');
@@ -382,7 +376,7 @@ export default function Round3AdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-6 max-w-7xl mx-auto">
+    <div className="w-full space-y-6">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-slate-800 gap-4">
         <div>

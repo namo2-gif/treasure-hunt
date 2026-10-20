@@ -37,7 +37,7 @@
 - Phase 9: Hardening test suite (`tests/phase9_hardening.test.ts`) tests seeded shuffle determinism across distinct teams, point calculations for N in [3, 4, 5], question status transitions, rank tie-breaks, security sanitisation (no leaked keys or rooms), and Section 2.7 string normalisations. All 69 vitest unit tests passing.
 - Phase 9: Load testing harness (`scripts/load-test.ts`) simulates 150 simultaneous participants polling `/api/state` with random jitter, tracking RPS, zero 5xx assertions, and p95 latency.
 - Phase 9: Complete operations guide and one-page outage recovery policy documented in `README.md`.
-- Phase 10 files touched:
+- Phase 11 / UI Polish: Root layout in `app/layout.tsx` is neutral; player pages enforce `max-w-player` (480px) within their own page wrappers; `/hq` is wrapped by `Shell.tsx` (`app/hq/layout.tsx`) featuring a 240px fixed sidebar on desktop (>=1024px) and sticky top bar with slide-over drawer navigation on mobile (<1024px); dashboard renders a fluid responsive table on desktop and an optimized card-list on mobile screens with touch-friendly 44px+ targets.
   - supabase/migrations/005_phase10_fixes.sql (Part A fixes, drop go_live, event_clock)
   - supabase/migrations/006_round3.sql (Part B Round 3 tables, r3_config, r3_zones, r3_riddles, r3_team, r3_boxes, r3_attempts, r3_result, atomic functions)
   - lib/event-service.ts (remove go-live, update open-r3, server clock integration, reset event action)
@@ -68,6 +68,65 @@
   - ADMIN_AUDIT.md (audit table of all admin controls and routes)
   - CODEMAP.md (rebuilt and updated)
 - Phase 11 files touched:
+  - middleware.ts
+  - lib/admin-api.ts
+  - lib/admin-fetch.ts
+  - components/hq/ErrorBanner.tsx
+  - components/hq/Shell.tsx
+  - components/hq/ResponsiveTable.tsx
+  - components/hq/Pager.tsx
+  - app/api/admin/[...unknown]/route.ts
+  - app/api/admin/content/riddles/route.ts
+  - app/api/admin/content/riddles/[id]/route.ts
+  - app/api/admin/content/questions/route.ts
+  - app/api/admin/content/questions/[id]/route.ts
+  - app/api/admin/content/teasers/route.ts
+  - app/api/admin/content/teasers/[id]/route.ts
+  - app/api/admin/content/qr/route.ts
+  - app/api/admin/content/qr/[id]/route.ts
+  - app/api/admin/riddles/route.ts
+  - app/api/admin/riddles/[id]/route.ts
+  - app/api/admin/questions/route.ts
+  - app/api/admin/questions/[id]/route.ts
+  - app/api/admin/teasers/route.ts
+  - app/api/admin/teasers/[id]/route.ts
+  - app/api/admin/qr/route.ts
+  - app/api/admin/qr/[id]/route.ts
+  - app/api/admin/round3/route.ts
+  - app/api/admin/dashboard/route.ts
+  - app/api/admin/standings/route.ts
+  - app/api/admin/selection/route.ts
+  - app/api/admin/teams/route.ts
+  - app/api/admin/students/route.ts
+  - app/api/admin/log/route.ts
+  - app/api/admin/export/[name]/route.ts
+  - app/api/admin/event/[action]/route.ts
+  - app/layout.tsx
+  - app/(player)/layout.tsx
+  - app/hq/layout.tsx
+  - app/hq/page.tsx
+  - app/hq/content/page.tsx
+  - app/hq/settings/page.tsx
+  - app/hq/selection/page.tsx
+  - app/hq/standings/page.tsx
+  - app/hq/teams/page.tsx
+  - app/hq/qr/page.tsx
+  - app/hq/interventions/page.tsx
+  - app/hq/log/page.tsx
+  - app/hq/round3/page.tsx
+  - app/api/state/route.ts
+  - app/api/answer/route.ts
+  - lib/messages.ts
+  - lib/state.ts
+  - components/Game.tsx
+  - scripts/seed.ts
+  - scripts/load-test.ts
+  - scripts/admin-smoke.ts
+  - tests/sql/phase11.sql
+  - CODEMAP.md
+  - ADMIN_AUDIT.md
+  - DECISIONS.md
+
   - scripts/db-check.ts
   - supabase/migrations/007_phase11.sql
   - supabase/RUN_THIS_IN_SQL_EDITOR.sql

@@ -2,19 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-
-const HQNav = () => (
-  <nav className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs font-medium text-slate-400">
-    <Link href="/hq" className="hover:text-accent transition-colors">Dashboard</Link>
-    <Link href="/hq/teams" className="hover:text-accent transition-colors">Teams & Students</Link>
-    <Link href="/hq/selection" className="hover:text-accent transition-colors">Selection</Link>
-    <Link href="/hq/content" className="hover:text-accent transition-colors">Content</Link>
-    <Link href="/hq/qr" className="hover:text-accent transition-colors">QR Locations</Link>
-    <Link href="/hq/interventions" className="hover:text-accent transition-colors">Interventions</Link>
-    <Link href="/hq/logs" className="hover:text-accent transition-colors">Log & Export</Link>
-    <Link href="/hq/settings" className="text-accent">Settings</Link>
-  </nav>
-);
+import { adminFetch, AdminFetchError } from '@/lib/admin-fetch';
 
 interface SettingItem {
   key: string;
@@ -32,8 +20,7 @@ export default function SettingsPage() {
 
   async function loadSettings() {
     try {
-      const res = await fetch('/api/admin/settings');
-      const data = await res.json();
+      const data = await adminFetch<any>('/api/admin/settings');
       if (data.ok && data.settings) {
         setSettings(data.settings);
         const map: { [key: string]: any } = {};
@@ -42,7 +29,8 @@ export default function SettingsPage() {
         }
         setEditValues(map);
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err instanceof AdminFetchError && err.status === 401) return;
       console.error(err);
     } finally {
       setLoading(false);
@@ -62,12 +50,11 @@ export default function SettingsPage() {
       const val = editValues[key];
       const parsedVal = isNaN(Number(val)) ? val : Number(val);
 
-      const res = await fetch('/api/admin/settings', {
+      const data = await adminFetch<any>('/api/admin/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key, value: parsedVal }),
       });
-      const data = await res.json();
       if (data.ok) {
         setMessages((prev) => ({ ...prev, [key]: { ok: true, text: 'Saved successfully' } }));
         await loadSettings();
@@ -82,14 +69,17 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto py-6 px-4">
+    <div className="w-full space-y-6">
       {/* Header */}
-      <div className="pb-4 border-b border-slate-700">
+      <div className="pb-5 border-b border-slate-800 flex items-center justify-between">
         <div>
-          <span className="px-2 py-0.5 text-xs font-semibold uppercase bg-accent/20 text-accent rounded">HQ</span>
-          <h1 className="text-xl font-bold text-slate-100 mt-1">System Settings</h1>
+          <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-accent/20 text-accent rounded border border-accent/30">
+            Rules & Parameters
+          </span>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-100 mt-1">
+            System Settings
+          </h1>
         </div>
-        <HQNav />
       </div>
 
       <div className="mt-6 p-4 sm:p-5 rounded-xl bg-slate-800/80 border border-slate-700">

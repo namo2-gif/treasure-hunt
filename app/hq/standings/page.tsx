@@ -2,21 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-
-const HQNav = () => (
-  <nav className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs font-medium text-slate-400">
-    <Link href="/hq" className="hover:text-accent transition-colors">Dashboard</Link>
-    <Link href="/hq/teams" className="hover:text-accent transition-colors">Teams & Students</Link>
-    <Link href="/hq/selection" className="hover:text-accent transition-colors">Selection</Link>
-    <Link href="/hq/standings" className="text-accent font-semibold">Standings</Link>
-    <Link href="/hq/round3" className="hover:text-accent transition-colors">Round 3</Link>
-    <Link href="/hq/content" className="hover:text-accent transition-colors">Content</Link>
-    <Link href="/hq/qr" className="hover:text-accent transition-colors">QR Locations</Link>
-    <Link href="/hq/interventions" className="hover:text-accent transition-colors">Interventions</Link>
-    <Link href="/hq/logs" className="hover:text-accent transition-colors">Log & Export</Link>
-    <Link href="/hq/settings" className="hover:text-accent transition-colors">Settings</Link>
-  </nav>
-);
+import { adminFetch, AdminFetchError } from '@/lib/admin-fetch';
 
 interface StandingsTeam {
   rank: number;
@@ -35,14 +21,14 @@ export default function StandingsPage() {
 
   async function loadData() {
     try {
-      const res = await fetch('/api/admin/standings');
-      const data = await res.json();
+      const data = await adminFetch<any>('/api/admin/standings');
       if (data.ok) {
         setR1(data.r1 || []);
         setR2(data.r2 || []);
         setR2StartMs(data.r2StartMs ?? null);
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err instanceof AdminFetchError && err.status === 401) return;
       console.error(err);
     } finally {
       setLoading(false);
@@ -76,19 +62,22 @@ export default function StandingsPage() {
   }
 
   return (
-    <div className="w-full max-w-5xl mx-auto py-6 px-4">
+    <div className="w-full space-y-6">
       {/* Header */}
-      <div className="pb-4 border-b border-slate-700 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="pb-5 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <span className="px-2 py-0.5 text-xs font-semibold uppercase bg-accent/20 text-accent rounded">HQ</span>
-          <h1 className="text-xl font-bold text-slate-100 mt-1">Official Standings</h1>
-          <HQNav />
+          <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-accent/20 text-accent rounded border border-accent/30">
+            Leaderboards
+          </span>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-100 mt-1">
+            Official Standings
+          </h1>
         </div>
         <div>
           <a
             href="/api/admin/export/standings"
             download
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors shadow-sm"
           >
             📥 Download CSV
           </a>

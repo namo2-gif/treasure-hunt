@@ -1,33 +1,65 @@
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
-import { getAdminSession } from '@/lib/session';
+import { withAdmin } from '@/lib/admin-api';
 
 const optionSchema = z.object({
   id: z.string().min(1),
   text: z.string().min(1),
 });
 
-const patchSchema = z.object({
+const updateSchema = z.object({
   position: z.number().int().min(1).optional(),
   text: z.string().min(1).optional(),
   options: z.array(optionSchema).min(2).optional(),
   correctOptionId: z.string().min(1).optional(),
 });
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const session = await getAdminSession();
-  if (!session) {
-    return NextResponse.json({ ok: false, code: 'UNAUTHORIZED', message: 'Admin session required' }, { status: 401 });
+export const GET = withAdmin(async (request: NextRequest, { params }) => {
+  const { id } = await params;
+  const riddleId = parseInt(id as string, 10);
+  if (isNaN(riddleId)) {
+    return NextResponse.json({ ok: false, code: 'BAD_REQUEST', message: 'Invalid riddle ID' }, { status: 400 });
   }
 
+  const { data: riddle, error } = await db
+    .from('riddles')
+    .select('id, position, text, options, correct_option_id')
+    .eq('id', riddleId)
+    .single();
+
+  if (error || !riddle) {
+    return NextResponse.json({ ok: false, code: 'NOT_FOUND', message: 'Riddle not found' }, { status: 404 });
+  }
+
+  const { count } = await db
+    .from('attempts')
+    .select('id', { count: 'exact', head: true })
+    .eq('riddle_id', riddleId);
+
+  return NextResponse.json({
+    ok: true,
+    riddle: {
+      id: riddle.id,
+      position: riddle.position,
+      text: riddle.text,
+      options: riddle.options,
+      correctOptionId: riddle.correct_option_id,
+      hasAttempts: (count ?? 0) > 0,
+    },
+  });
+});
+
+async function handleUpdate(
+  request: NextRequest,
+  params: Promise<Record<string, string | string[]>>,
+  session: { aid: number }
+) {
   const { id } = await params;
-  const riddleId = parseInt(id);
+  const riddleId = parseInt(id as string, 10);
   if (isNaN(riddleId)) {
     return NextResponse.json({ ok: false, code: 'BAD_REQUEST', message: 'Invalid riddle ID' }, { status: 400 });
   }
@@ -42,9 +74,12 @@ export async function PATCH(
     }
   }
 
-  const parsed = patchSchema.safeParse(body);
+  const parsed = updateSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ ok: false, code: 'VALIDATION_ERROR', message: parsed.error.errors[0]?.message || 'Validation failed' }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, code: 'VALIDATION_ERROR', message: parsed.error.errors[0]?.message || 'Validation failed' },
+      { status: 400 }
+    );
   }
 
   const { data: riddle } = await db
@@ -54,7 +89,7 @@ export async function PATCH(
     .single();
 
   if (!riddle) {
-    return NextResponse.json({ ok: false, code: 'NOT_FOUND', message: 'Riddle not found' });
+    return NextResponse.json({ ok: false, code: 'NOT_FOUND', message: 'Riddle not found' }, { status: 404 });
   }
 
   // Check if attempts exist (locks options & correctOptionId)
@@ -64,11 +99,14 @@ export async function PATCH(
     .eq('riddle_id', riddleId);
 
   const hasAttempts = (count ?? 0) > 0;
-
   const { options, correctOptionId, text: stem, position } = parsed.data;
 
   if (hasAttempts && (options !== undefined || correctOptionId !== undefined)) {
-    return NextResponse.json({ ok: false, code: 'CONTENT_LOCKED', message: 'Options and correct answer are locked because attempts exist' });
+    return NextResponse.json({
+      ok: false,
+      code: 'CONTENT_LOCKED',
+      message: 'Options and correct answer are locked because attempts exist',
+    });
   }
 
   const updates: Record<string, unknown> = {};
@@ -85,7 +123,7 @@ export async function PATCH(
 
   const { error } = await db.from('riddles').update(updates).eq('id', riddleId);
   if (error) {
-    return NextResponse.json({ ok: false, code: 'DB_ERROR', message: error.message });
+    return NextResponse.json({ ok: false, code: 'DB_ERROR', message: error.message }, { status: 500 });
   }
 
   await db.from('admin_log').insert({
@@ -99,17 +137,17 @@ export async function PATCH(
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const session = await getAdminSession();
-  if (!session) {
-    return NextResponse.json({ ok: false, code: 'UNAUTHORIZED', message: 'Admin session required' }, { status: 401 });
-  }
+export const PUT = withAdmin(async (req, { params, session }) => {
+  return handleUpdate(req, params, session);
+});
 
+export const PATCH = withAdmin(async (req, { params, session }) => {
+  return handleUpdate(req, params, session);
+});
+
+export const DELETE = withAdmin(async (request: NextRequest, { params, session }) => {
   const { id } = await params;
-  const riddleId = parseInt(id);
+  const riddleId = parseInt(id as string, 10);
   if (isNaN(riddleId)) {
     return NextResponse.json({ ok: false, code: 'BAD_REQUEST', message: 'Invalid riddle ID' }, { status: 400 });
   }
@@ -121,12 +159,16 @@ export async function DELETE(
     .eq('riddle_id', riddleId);
 
   if ((count ?? 0) > 0) {
-    return NextResponse.json({ ok: false, code: 'CONTENT_LOCKED', message: 'Cannot delete riddle with existing attempts' });
+    return NextResponse.json({
+      ok: false,
+      code: 'CONTENT_LOCKED',
+      message: 'Cannot delete riddle with existing attempts',
+    });
   }
 
   const { error } = await db.from('riddles').delete().eq('id', riddleId);
   if (error) {
-    return NextResponse.json({ ok: false, code: 'DB_ERROR', message: error.message });
+    return NextResponse.json({ ok: false, code: 'DB_ERROR', message: error.message }, { status: 500 });
   }
 
   await db.from('admin_log').insert({
@@ -138,4 +180,4 @@ export async function DELETE(
   });
 
   return NextResponse.json({ ok: true });
-}
+});

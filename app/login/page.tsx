@@ -68,8 +68,9 @@ function LoginForm() {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center flex-1 w-full max-w-player mx-auto py-8">
-      <div className="w-full bg-surface border border-slate-700/60 rounded-xl p-6 shadow-xl">
+    <main className="w-full max-w-player min-h-screen flex flex-col p-4 mx-auto items-center justify-center">
+      <div className="flex flex-col items-center justify-center flex-1 w-full mx-auto py-8">
+        <div className="w-full bg-surface border border-slate-700/60 rounded-xl p-6 shadow-xl">
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold tracking-tight text-accent mb-1">
             Campus Treasure Hunt
@@ -153,6 +154,7 @@ function LoginForm() {
         Lost your code? Contact your team captain or hunt organizers.
       </p>
     </div>
+  </main>
   );
 }
 

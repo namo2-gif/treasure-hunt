@@ -1,22 +1,18 @@
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { z } from 'zod';
 import { db } from '@/lib/db';
-import { getAdminSession } from '@/lib/session';
+import { withAdmin } from '@/lib/admin-api';
 
 const createQrSchema = z.object({
   name: z.string().min(1).trim(),
   capacity: z.number().int().positive().optional().default(12),
 });
 
-export async function GET() {
-  const session = await getAdminSession();
-  if (!session) {
-    return NextResponse.json({ ok: false, code: 'UNAUTHORIZED', message: 'Admin session required' }, { status: 401 });
-  }
-
+export const GET = withAdmin(async () => {
   const { data: qrs, error } = await db
     .from('qr_locations')
     .select('id, name, token, capacity, active')
@@ -48,22 +44,22 @@ export async function GET() {
 
   const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
 
-  const items = (qrs || []).map((qr) => ({
-    ...qr,
-    link: `${baseUrl}/s/${qr.token}`,
-    run1Count: counts[qr.id]?.run1 || 0,
-    run2Count: counts[qr.id]?.run2 || 0,
-  }));
+  return NextResponse.json({
+    ok: true,
+    qrs: (qrs || []).map((q) => ({
+      id: q.id,
+      name: q.name,
+      token: q.token,
+      capacity: q.capacity,
+      active: q.active,
+      registeredRun1: counts[q.id]?.run1 ?? 0,
+      registeredRun2: counts[q.id]?.run2 ?? 0,
+      scanUrl: `${baseUrl}/s/${q.token}`,
+    })),
+  });
+});
 
-  return NextResponse.json({ ok: true, qrs: items });
-}
-
-export async function POST(request: NextRequest) {
-  const session = await getAdminSession();
-  if (!session) {
-    return NextResponse.json({ ok: false, code: 'UNAUTHORIZED', message: 'Admin session required' }, { status: 401 });
-  }
-
+export const POST = withAdmin(async (request: NextRequest, { session }) => {
   let body: unknown;
   try {
     body = await request.json();
@@ -76,40 +72,43 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, code: 'VALIDATION_ERROR', message: 'Name is required' }, { status: 400 });
   }
 
-  // Generate 16 bytes base64url token (Section 9)
   const token = crypto.randomBytes(16).toString('base64url');
 
-  const { data: qr, error } = await db
+  const { data, error } = await db
     .from('qr_locations')
     .insert({
       name: parsed.data.name,
-      capacity: parsed.data.capacity,
       token,
+      capacity: parsed.data.capacity,
       active: true,
     })
-    .select()
+    .select('id, name, token, capacity, active')
     .single();
 
-  if (error || !qr) {
-    return NextResponse.json({ ok: false, code: 'DB_ERROR', message: error?.message || 'Failed to create QR' }, { status: 500 });
+  if (error) {
+    return NextResponse.json({ ok: false, code: 'DB_ERROR', message: error.message }, { status: 500 });
   }
 
-  // Record admin_log
   await db.from('admin_log').insert({
     admin_id: session.aid,
-    action: 'create-qr',
-    target: `qr_locations:${qr.id}`,
+    action: 'create_qr',
+    target: String(data.id),
     before: null,
-    after: qr,
+    after: JSON.stringify({ name: data.name, capacity: data.capacity }),
   });
 
   const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
 
-  return NextResponse.json({
-    ok: true,
-    qr: {
-      ...qr,
-      link: `${baseUrl}/s/${qr.token}`,
+  return NextResponse.json(
+    {
+      ok: true,
+      qr: {
+        ...data,
+        registeredRun1: 0,
+        registeredRun2: 0,
+        scanUrl: `${baseUrl}/s/${data.token}`,
+      },
     },
-  });
-}
+    { status: 201 }
+  );
+});

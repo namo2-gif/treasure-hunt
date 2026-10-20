@@ -1,10 +1,11 @@
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { z } from 'zod';
 import { db } from '@/lib/db';
-import { getAdminSession } from '@/lib/session';
+import { withAdmin } from '@/lib/admin-api';
 
 const updateQrSchema = z.object({
   name: z.string().min(1).trim().optional(),
@@ -13,17 +14,41 @@ const updateQrSchema = z.object({
   regenerateToken: z.boolean().optional(),
 });
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const session = await getAdminSession();
-  if (!session) {
-    return NextResponse.json({ ok: false, code: 'UNAUTHORIZED', message: 'Admin session required' }, { status: 401 });
+export const GET = withAdmin(async (request: NextRequest, { params }) => {
+  const { id: rawId } = await params;
+  const qrId = parseInt(rawId as string, 10);
+  if (isNaN(qrId)) {
+    return NextResponse.json({ ok: false, code: 'INVALID_ID', message: 'QR ID must be an integer' }, { status: 400 });
   }
 
+  const { data: qr, error } = await db
+    .from('qr_locations')
+    .select('*')
+    .eq('id', qrId)
+    .single();
+
+  if (error || !qr) {
+    return NextResponse.json({ ok: false, code: 'NOT_FOUND', message: 'QR location not found' }, { status: 404 });
+  }
+
+  const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+
+  return NextResponse.json({
+    ok: true,
+    qr: {
+      ...qr,
+      scanUrl: `${baseUrl}/s/${qr.token}`,
+    },
+  });
+});
+
+async function handleUpdate(
+  request: NextRequest,
+  params: Promise<Record<string, string | string[]>>,
+  session: { aid: number }
+) {
   const { id: rawId } = await params;
-  const qrId = parseInt(rawId, 10);
+  const qrId = parseInt(rawId as string, 10);
   if (isNaN(qrId)) {
     return NextResponse.json({ ok: false, code: 'INVALID_ID', message: 'QR ID must be an integer' }, { status: 400 });
   }
@@ -50,7 +75,7 @@ export async function PATCH(
     return NextResponse.json({ ok: false, code: 'NOT_FOUND', message: 'QR location not found' }, { status: 404 });
   }
 
-  const updates: Record<string, any> = {};
+  const updates: Record<string, unknown> = {};
   if (parsed.data.name !== undefined) updates.name = parsed.data.name;
   if (parsed.data.capacity !== undefined) updates.capacity = parsed.data.capacity;
   if (parsed.data.active !== undefined) updates.active = parsed.data.active;
@@ -58,11 +83,15 @@ export async function PATCH(
     updates.token = crypto.randomBytes(16).toString('base64url');
   }
 
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ ok: true, qr: existing });
+  }
+
   const { data: updated, error: updateError } = await db
     .from('qr_locations')
     .update(updates)
     .eq('id', qrId)
-    .select()
+    .select('id, name, token, capacity, active')
     .single();
 
   if (updateError || !updated) {
@@ -71,10 +100,10 @@ export async function PATCH(
 
   await db.from('admin_log').insert({
     admin_id: session.aid,
-    action: 'update-qr',
-    target: `qr_locations:${qrId}`,
-    before: existing,
-    after: updated,
+    action: 'edit_qr',
+    target: String(qrId),
+    before: JSON.stringify({ name: existing.name, capacity: existing.capacity, active: existing.active, token: existing.token }),
+    after: JSON.stringify(updates),
   });
 
   const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
@@ -83,67 +112,64 @@ export async function PATCH(
     ok: true,
     qr: {
       ...updated,
-      link: `${baseUrl}/s/${updated.token}`,
+      scanUrl: `${baseUrl}/s/${updated.token}`,
     },
   });
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const session = await getAdminSession();
-  if (!session) {
-    return NextResponse.json({ ok: false, code: 'UNAUTHORIZED', message: 'Admin session required' }, { status: 401 });
-  }
+export const PUT = withAdmin(async (req, { params, session }) => {
+  return handleUpdate(req, params, session);
+});
 
+export const PATCH = withAdmin(async (req, { params, session }) => {
+  return handleUpdate(req, params, session);
+});
+
+export const DELETE = withAdmin(async (request: NextRequest, { params, session }) => {
   const { id: rawId } = await params;
-  const qrId = parseInt(rawId, 10);
+  const qrId = parseInt(rawId as string, 10);
   if (isNaN(qrId)) {
     return NextResponse.json({ ok: false, code: 'INVALID_ID', message: 'QR ID must be an integer' }, { status: 400 });
   }
 
-  // Check if any question points to this QR (Section 9)
-  const { data: questions } = await db
+  // Check if questions reference this QR
+  const { count } = await db
     .from('questions')
-    .select('id')
-    .eq('qr_id', qrId)
-    .limit(1);
+    .select('id', { count: 'exact', head: true })
+    .eq('qr_id', qrId);
 
-  if (questions && questions.length > 0) {
-    return NextResponse.json({
-      ok: false,
-      code: 'QR_REFERENCED',
-      message: 'Cannot delete this QR location because questions are currently assigned to it.',
-    });
+  if ((count ?? 0) > 0) {
+    return NextResponse.json(
+      { ok: false, code: 'IN_USE', message: 'Cannot delete QR location referenced by questions' },
+      { status: 400 }
+    );
   }
 
-  const { data: existing } = await db
-    .from('qr_locations')
-    .select('*')
-    .eq('id', qrId)
-    .single();
+  // Check if registrations reference this QR
+  const { count: regCount } = await db
+    .from('registrations')
+    .select('id', { count: 'exact', head: true })
+    .eq('qr_id', qrId);
 
-  if (!existing) {
-    return NextResponse.json({ ok: false, code: 'NOT_FOUND', message: 'QR location not found' }, { status: 404 });
+  if ((regCount ?? 0) > 0) {
+    return NextResponse.json(
+      { ok: false, code: 'IN_USE', message: 'Cannot delete QR location with existing registrations' },
+      { status: 400 }
+    );
   }
 
-  const { error: deleteError } = await db
-    .from('qr_locations')
-    .delete()
-    .eq('id', qrId);
-
-  if (deleteError) {
-    return NextResponse.json({ ok: false, code: 'DB_ERROR', message: deleteError.message }, { status: 500 });
+  const { error } = await db.from('qr_locations').delete().eq('id', qrId);
+  if (error) {
+    return NextResponse.json({ ok: false, code: 'DB_ERROR', message: error.message }, { status: 500 });
   }
 
   await db.from('admin_log').insert({
     admin_id: session.aid,
-    action: 'delete-qr',
-    target: `qr_locations:${qrId}`,
-    before: existing,
+    action: 'delete_qr',
+    target: String(qrId),
+    before: null,
     after: null,
   });
 
   return NextResponse.json({ ok: true });
-}
+});

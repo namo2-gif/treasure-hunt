@@ -18,5 +18,9 @@ export default async function ScanPage({
   }
 
   // 2. With session: render small page where client JS POSTs /api/scan
-  return <ScanClient token={token} />;
+  return (
+    <main className="w-full max-w-player min-h-screen flex flex-col p-4 mx-auto items-center justify-center">
+      <ScanClient token={token} />
+    </main>
+  );
 }

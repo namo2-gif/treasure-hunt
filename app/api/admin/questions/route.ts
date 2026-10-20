@@ -1,9 +1,10 @@
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
-import { getAdminSession } from '@/lib/session';
+import { withAdmin } from '@/lib/admin-api';
 
 const optionSchema = z.object({
   id: z.string().min(1),
@@ -20,12 +21,7 @@ const createQuestionSchema = z.object({
   correctOptionId: z.string().min(1),
 });
 
-export async function GET() {
-  const session = await getAdminSession();
-  if (!session) {
-    return NextResponse.json({ ok: false, code: 'UNAUTHORIZED', message: 'Admin session required' }, { status: 401 });
-  }
-
+export const GET = withAdmin(async () => {
   const { data: questions, error } = await db
     .from('questions')
     .select('id, run, slot, variant, qr_id, stem, options, correct_option_id, qr_locations(name)')
@@ -34,7 +30,7 @@ export async function GET() {
     .order('variant');
 
   if (error) {
-    return NextResponse.json({ ok: false, code: 'DB_ERROR', message: error.message });
+    return NextResponse.json({ ok: false, code: 'DB_ERROR', message: error.message }, { status: 500 });
   }
 
   // Check which questions have attempts
@@ -60,14 +56,9 @@ export async function GET() {
       hasAttempts: attemptedIds.has(q.id),
     })),
   });
-}
+});
 
-export async function POST(request: NextRequest) {
-  const session = await getAdminSession();
-  if (!session) {
-    return NextResponse.json({ ok: false, code: 'UNAUTHORIZED', message: 'Admin session required' }, { status: 401 });
-  }
-
+export const POST = withAdmin(async (request: NextRequest, { session }) => {
   let body: unknown = {};
   const text = await request.text();
   if (text.trim().length > 0) {
@@ -80,32 +71,59 @@ export async function POST(request: NextRequest) {
 
   const parsed = createQuestionSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ ok: false, code: 'VALIDATION_ERROR', message: parsed.error.errors[0]?.message || 'Validation failed' }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, code: 'VALIDATION_ERROR', message: parsed.error.errors[0]?.message || 'Validation failed' },
+      { status: 400 }
+    );
   }
 
   const { run, slot, variant, qrId, stem, options, correctOptionId } = parsed.data;
 
-  if (!options.find((o) => o.id === correctOptionId)) {
-    return NextResponse.json({ ok: false, code: 'VALIDATION_ERROR', message: 'correctOptionId must match one of the option IDs' }, { status: 400 });
+  // Validate that correctOptionId exists in options
+  if (!options.some((o) => o.id === correctOptionId)) {
+    return NextResponse.json(
+      { ok: false, code: 'INVALID_CORRECT_OPTION', message: 'correctOptionId must match one of the option IDs' },
+      { status: 400 }
+    );
   }
 
-  const { data: question, error } = await db
+  // Verify QR exists
+  const { data: qr } = await db.from('qr_locations').select('id').eq('id', qrId).single();
+  if (!qr) {
+    return NextResponse.json({ ok: false, code: 'INVALID_QR', message: 'QR location not found' }, { status: 400 });
+  }
+
+  const { data, error } = await db
     .from('questions')
-    .insert({ run, slot, variant, qr_id: qrId, stem, options, correct_option_id: correctOptionId })
+    .insert({
+      run,
+      slot,
+      variant,
+      qr_id: qrId,
+      stem,
+      options,
+      correct_option_id: correctOptionId,
+    })
     .select('id')
     .single();
 
   if (error) {
-    return NextResponse.json({ ok: false, code: 'DB_ERROR', message: error.message });
+    if (error.code === '23505') {
+      return NextResponse.json(
+        { ok: false, code: 'DUPLICATE', message: `Question for run ${run}, slot ${slot}, variant ${variant} already exists` },
+        { status: 400 }
+      );
+    }
+    return NextResponse.json({ ok: false, code: 'DB_ERROR', message: error.message }, { status: 500 });
   }
 
   await db.from('admin_log').insert({
     admin_id: session.aid,
     action: 'create_question',
-    target: String(question.id),
+    target: String(data.id),
     before: null,
     after: JSON.stringify({ run, slot, variant, qrId, stem }),
   });
 
-  return NextResponse.json({ ok: true, id: question.id });
-}
+  return NextResponse.json({ ok: true, id: data.id }, { status: 201 });
+});

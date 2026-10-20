@@ -2,19 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-
-const HQNav = () => (
-  <nav className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs font-medium text-slate-400">
-    <Link href="/hq" className="hover:text-accent transition-colors">Dashboard</Link>
-    <Link href="/hq/teams" className="hover:text-accent transition-colors">Teams & Students</Link>
-    <Link href="/hq/selection" className="hover:text-accent transition-colors">Selection</Link>
-    <Link href="/hq/content" className="hover:text-accent transition-colors">Content</Link>
-    <Link href="/hq/qr" className="hover:text-accent transition-colors">QR Locations</Link>
-    <Link href="/hq/interventions" className="text-accent">Interventions</Link>
-    <Link href="/hq/logs" className="hover:text-accent transition-colors">Log & Export</Link>
-    <Link href="/hq/settings" className="hover:text-accent transition-colors">Settings</Link>
-  </nav>
-);
+import { adminFetch } from '@/lib/admin-fetch';
 
 interface Result { ok: boolean; message?: string; code?: string; [key: string]: any; }
 
@@ -39,12 +27,15 @@ function ResultBadge({ result }: { result: Result | null }) {
 }
 
 async function callApi(url: string, body: object): Promise<Result> {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  return res.json();
+  try {
+    return await adminFetch<Result>(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (err: any) {
+    return { ok: false, message: err?.message || 'Request failed' };
+  }
 }
 
 export default function InterventionsPage() {
@@ -99,13 +90,16 @@ export default function InterventionsPage() {
   );
 
   return (
-    <div className="w-full max-w-4xl mx-auto py-6 px-4">
-      <div className="pb-4 border-b border-slate-700">
+    <div className="w-full space-y-6">
+      <div className="pb-5 border-b border-slate-800 flex items-center justify-between">
         <div>
-          <span className="px-2 py-0.5 text-xs font-semibold uppercase bg-accent/20 text-accent rounded">HQ</span>
-          <h1 className="text-xl font-bold text-slate-100 mt-1">Interventions</h1>
+          <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-accent/20 text-accent rounded border border-accent/30">
+            Emergency Overrides
+          </span>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-100 mt-1">
+            Interventions
+          </h1>
         </div>
-        <HQNav />
       </div>
 
       <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">

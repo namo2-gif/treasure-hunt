@@ -20,10 +20,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className="min-h-screen bg-background text-slate-100 flex flex-col items-center">
-        <main className="w-full max-w-player min-h-screen flex flex-col p-4">
-          {children}
-        </main>
+      <body className="min-h-screen bg-background text-slate-100 antialiased">
+        {children}
       </body>
     </html>
   );

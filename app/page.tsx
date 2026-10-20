@@ -12,11 +12,13 @@ export default async function HomePage() {
   }
 
   return (
-    <div className="flex flex-col flex-1 w-full max-w-player mx-auto py-4">
-      <Game />
-      <div className="w-full mt-8">
-        <ClientLogoutButton />
+    <main className="w-full max-w-player min-h-screen flex flex-col p-4 mx-auto">
+      <div className="flex flex-col flex-1 w-full mx-auto py-2">
+        <Game />
+        <div className="w-full mt-8">
+          <ClientLogoutButton />
+        </div>
       </div>
-    </div>
+    </main>
   );
 }

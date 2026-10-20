@@ -2,22 +2,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-
-const HQNav = () => (
-  <nav className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs font-medium text-slate-400">
-    <Link href="/hq" className="hover:text-accent transition-colors">Dashboard</Link>
-    <Link href="/hq/event" className="text-accent font-semibold">Event Control</Link>
-    <Link href="/hq/teams" className="hover:text-accent transition-colors">Teams & Students</Link>
-    <Link href="/hq/selection" className="hover:text-accent transition-colors">Selection</Link>
-    <Link href="/hq/standings" className="hover:text-accent transition-colors">Standings</Link>
-    <Link href="/hq/round3" className="hover:text-accent transition-colors">Round 3</Link>
-    <Link href="/hq/content" className="hover:text-accent transition-colors">Content</Link>
-    <Link href="/hq/qr" className="hover:text-accent transition-colors">QR Locations</Link>
-    <Link href="/hq/interventions" className="hover:text-accent transition-colors">Interventions</Link>
-    <Link href="/hq/logs" className="hover:text-accent transition-colors">Log & Export</Link>
-    <Link href="/hq/settings" className="hover:text-accent transition-colors">Settings</Link>
-  </nav>
-);
+import { adminFetch, AdminFetchError } from '@/lib/admin-fetch';
+import ErrorBanner from '@/components/hq/ErrorBanner';
 
 export default function EventControlPage() {
   const [data, setData] = useState<any>(null);
@@ -34,8 +20,7 @@ export default function EventControlPage() {
 
   async function fetchDashboard() {
     try {
-      const res = await fetch('/api/admin/dashboard');
-      const json = await res.json();
+      const json = await adminFetch<any>('/api/admin/dashboard');
       if (json.ok) {
         setData(json);
         setError(null);
@@ -49,6 +34,7 @@ export default function EventControlPage() {
         setError(json.message || 'Failed to load event status');
       }
     } catch (err: any) {
+      if (err instanceof AdminFetchError && err.status === 401) return;
       setError(err?.message || 'Network error');
     } finally {
       setLoading(false);
@@ -82,12 +68,11 @@ export default function EventControlPage() {
 
     setActionLoading(true);
     try {
-      const res = await fetch(`/api/admin/event/${action}`, {
+      const result = await adminFetch<any>(`/api/admin/event/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload ?? {}),
       });
-      const result = await res.json();
       if (!result.ok) {
         alert(`Action failed: ${result.message || result.code}`);
       } else {
@@ -111,21 +96,20 @@ export default function EventControlPage() {
   const isBreakActive = phase === 'r2_break' && breakRemainingMs > 0;
 
   return (
-    <div className="w-full max-w-4xl mx-auto py-6 px-4">
+    <div className="w-full space-y-6">
       {/* Header */}
-      <div className="pb-4 border-b border-slate-700">
+      <div className="pb-5 border-b border-slate-800 flex items-center justify-between">
         <div>
-          <span className="px-2 py-0.5 text-xs font-semibold uppercase bg-accent/20 text-accent rounded">HQ</span>
-          <h1 className="text-xl font-bold text-slate-100 mt-1">Event Control</h1>
+          <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-accent/20 text-accent rounded border border-accent/30">
+            Lifecycle & Phases
+          </span>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-100 mt-1">
+            Event Control
+          </h1>
         </div>
-        <HQNav />
       </div>
 
-      {error && (
-        <div className="mt-4 p-3 bg-red-950/60 border border-red-800 text-red-200 text-sm rounded-lg">
-          {error}
-        </div>
-      )}
+      <ErrorBanner message={error} onRetry={fetchDashboard} />
 
       {/* Status Overview */}
       {data && (
