@@ -13,7 +13,7 @@ const optionSchema = z.object({
 
 const createQuestionSchema = z.object({
   run: z.union([z.literal(1), z.literal(2)]),
-  slot: z.number().int().min(1).max(5),
+  slot: z.number().int().min(1).max(10),
   variant: z.number().int().min(1),
   qrId: z.number().int().positive(),
   stem: z.string().min(1),

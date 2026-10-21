@@ -16,11 +16,21 @@ interface QRItem { id: number; name: string; token: string; capacity: number; ac
 interface Round3Config { code: string; hintText: string; clueText?: string; passwordNorm?: string; }
 
 function optionsFromText(text: string): Option[] {
-  return text.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => {
-    const m = line.match(/^([a-z]):\s*(.+)$/i);
-    if (m) return { id: m[1].toLowerCase(), text: m[2].trim() };
-    return null;
-  }).filter(Boolean) as Option[];
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, idx) => {
+      // Matches "a: Option text" or "a. Option text" or "a - Option text"
+      const m = line.match(/^([a-z0-9])[\:\.\-]\s*(.+)$/i);
+      if (m) {
+        return { id: m[1].toLowerCase(), text: m[2].trim() };
+      }
+      // If line does not have prefix (e.g. just "DR", "EF"), assign auto id 'a', 'b', etc.
+      const defaultId = String.fromCharCode(97 + idx); // 0 -> 'a', 1 -> 'b', etc.
+      return { id: defaultId, text: line };
+    })
+    .filter(Boolean) as Option[];
 }
 
 function optionsToText(opts: Option[]): string {
@@ -157,7 +167,7 @@ export default function ContentPage() {
     if (f.stem !== undefined) body.stem = f.stem;
     if (f.qrId !== undefined) body.qrId = parseInt(f.qrId, 10);
     if (f.optionsText !== undefined) body.options = optionsFromText(f.optionsText);
-    if (f.correctOptionId !== undefined) body.correctOptionId = f.correctOptionId;
+    if (f.correctOptionId !== undefined) body.correctOptionId = f.correctOptionId.trim().toLowerCase();
     const data = await callApi(`/api/admin/content/questions/${id}`, 'PUT', body);
     if (data.ok) { showMsg('ok', 'Question updated'); setEditQuestion(null); await fetchAll(); }
     else showMsg('err', data.message || data.code);
@@ -179,7 +189,7 @@ export default function ContentPage() {
       qrId: parseInt(newQuestion.qrId, 10),
       stem: newQuestion.stem,
       options: opts,
-      correctOptionId: newQuestion.correctOptionId,
+      correctOptionId: newQuestion.correctOptionId.trim().toLowerCase(),
     });
     if (data.ok) {
       showMsg('ok', 'Question created');
@@ -454,8 +464,8 @@ export default function ContentPage() {
                       </select>
                     </div>
                     <div>
-                      <label className={labelClass}>Slot (1–5)</label>
-                      <input className={inputClass} type="number" min="1" max="5" value={newQuestion.slot} onChange={(e) => setNewQuestion((p) => ({ ...p, slot: e.target.value }))} />
+                      <label className={labelClass}>Slot (1–10)</label>
+                      <input className={inputClass} type="number" min="1" max="10" value={newQuestion.slot} onChange={(e) => setNewQuestion((p) => ({ ...p, slot: e.target.value }))} />
                     </div>
                     <div>
                       <label className={labelClass}>Variant</label>

@@ -180,3 +180,5 @@
   - ADMIN_AUDIT.md
 
 
+- Round 2 questions fixed at 4 per run (migration 008_fixed_4_questions.sql): all teams answer exactly 4 questions regardless of team size (3, 4, or 5). Teaser is unchanged (N pieces for N members). Points per question = floor(run_total_points / 4). For a 3-member team, question 4 has no matching piece_no so it only appears on the captain's board; for a 5-member team, the member with piece_no 5 has no question in 'mine'. The questions table must have at least 4 distinct slots per run (slot 1–4).
+- Round 2 question slots expanded from max 5 to max 10 (migration 009_slot_10.sql + Zod .max(10) in questions route). Content layout: 10 slots × 2 variants = 20 questions per run, 40 total (R1 run + R2 run). Each team still gets exactly 4 questions picked from the 10 slots. Supports ~25-40 teams (100-125 students) comfortably.
