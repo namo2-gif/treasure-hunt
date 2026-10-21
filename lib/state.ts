@@ -48,7 +48,7 @@ export interface RawPlayerState {
     position: number;
     text: string;
     options: Array<{ id: string; text: string }>;
-    attempts: Array<{ try_no: number; correct: boolean }>;
+    attempts: Array<{ try_no: number; option_id?: string; correct?: boolean }>;
   }>;
   r3?: {
     hasScanned: boolean;
@@ -99,11 +99,14 @@ export function buildState(raw: RawPlayerState): StateDTO {
           lastAtt
         );
       });
+      const submittedCount = riddles.filter((r) => r.status === 'submitted').length;
       return {
         ...base,
         screen: 'R1',
         deadlineEventMs: raw.r1DeadlineMs ?? undefined,
         canSubmit: me.isCaptain,
+        submittedCount,
+        total: riddles.length,
         riddles,
       };
     }

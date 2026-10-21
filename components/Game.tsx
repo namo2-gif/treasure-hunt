@@ -374,18 +374,85 @@ function BoardQuestion({ q, post, refresh }: { q: CaptainBoardQuestionDTO; post:
 function Round1Screen({ state, post, refresh }: { state: StateDTO; post: PostFn; refresh: () => void }) {
   const riddles = state.riddles || [];
   const canSubmit = !!state.canSubmit;
+  const total = riddles.length;
+  const submittedCount = riddles.filter((r) => r.status === 'submitted').length;
+  const allSubmitted = total > 0 && submittedCount === total;
+
+  const [currentIndex, setCurrentIndex] = useState(() => {
+    const firstOpen = riddles.findIndex((r) => r.status === 'open');
+    return firstOpen !== -1 ? firstOpen : 0;
+  });
+
+  const [draftChoices, setDraftChoices] = useState<Record<number, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState<Record<number, string>>({});
+
+  const safeIndex = total > 0 ? Math.min(Math.max(0, currentIndex), total - 1) : 0;
+  const currentRiddle = riddles[safeIndex];
+
+  if (total === 0 || !currentRiddle) {
+    return (
+      <Card>
+        <div className="text-center py-6 text-slate-400 text-sm">
+          No riddles available right now. Tell an organiser.
+        </div>
+      </Card>
+    );
+  }
+
+  const isCurrentSubmitted = currentRiddle.status === 'submitted';
+  const selectedChoice = isCurrentSubmitted
+    ? currentRiddle.chosenOptionId || draftChoices[currentRiddle.id] || null
+    : draftChoices[currentRiddle.id] || null;
+
+  async function handleSubmit() {
+    if (!selectedChoice || busy || !canSubmit || isCurrentSubmitted) return;
+    setBusy(true);
+    setFeedback((prev) => ({ ...prev, [currentRiddle.id]: '' }));
+
+    const res = await post('/api/answer', `r1:${currentRiddle.id}:${selectedChoice}`, {
+      kind: 'r1',
+      key: currentRiddle.id,
+      optionId: selectedChoice,
+    });
+    setBusy(false);
+
+    if (!res) return;
+    if (res.ok) {
+      setFeedback((prev) => ({ ...prev, [currentRiddle.id]: 'Answer submitted' }));
+      refresh();
+    } else {
+      setFeedback((prev) => ({
+        ...prev,
+        [currentRiddle.id]: res.code ? getErrorMessage(res.code) : 'Something went wrong.',
+      }));
+      refresh();
+    }
+  }
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <div className="text-xs uppercase tracking-wider text-slate-400">Round 1</div>
           <h2 className="text-base font-bold text-slate-100">Campus Riddles</h2>
         </div>
-        <span className="text-xs text-slate-400 font-medium">
-          {riddles.filter((r) => r.status === 'correct').length} of {riddles.length} solved
-        </span>
+        <div className="text-right">
+          <span className="text-xs text-slate-400 font-medium">
+            {submittedCount} / {total} answered
+          </span>
+          <div className="text-[11px] text-accent font-semibold">
+            Riddle {safeIndex + 1} of {total}
+          </div>
+        </div>
       </div>
+
+      {allSubmitted && (
+        <div className="rounded-lg p-3 bg-slate-800 border border-slate-700 text-xs text-slate-200 text-center font-medium">
+          All {total} answers submitted. Waiting for Round 1 to end.
+        </div>
+      )}
 
       {!canSubmit && (
         <div className="rounded-lg p-3 bg-slate-800/80 border border-slate-700 text-xs text-slate-300">
@@ -393,138 +460,124 @@ function Round1Screen({ state, post, refresh }: { state: StateDTO; post: PostFn;
         </div>
       )}
 
-      {riddles.length === 0 ? (
-        <Card>
-          <div className="text-center py-6 text-slate-400 text-sm">
-            No riddles available right now. Tell an organiser.
-          </div>
-        </Card>
-      ) : (
-        riddles.map((riddle) => (
-          <RiddleCard
-            key={riddle.id}
-            riddle={riddle}
-            canSubmit={canSubmit}
-            post={post}
-            refresh={refresh}
-          />
-        ))
-      )}
-    </div>
-  );
-}
-
-function RiddleCard({
-  riddle,
-  canSubmit,
-  post,
-  refresh,
-}: {
-  riddle: RiddleDTO;
-  canSubmit: boolean;
-  post: PostFn;
-  refresh: () => void;
-}) {
-  const [choice, setChoice] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [feedback, setFeedback] = useState<string | null>(null);
-
-  const done = riddle.status === 'correct' || riddle.status === 'wrong';
-
-  async function handleSubmit() {
-    if (!choice || busy || !canSubmit) return;
-    setBusy(true);
-    setFeedback(null);
-
-    const res = await post('/api/answer', `r1:${riddle.id}:${choice}`, {
-      kind: 'r1',
-      key: riddle.id,
-      optionId: choice,
-    });
-    setBusy(false);
-
-    if (!res) return;
-    if (res.ok) {
-      setFeedback(res.status === 'correct' ? 'Correct.' : 'Wrong.');
-      setChoice(null);
-      refresh();
-    } else {
-      setFeedback(res.code ? getErrorMessage(res.code) : 'Something went wrong.');
-      refresh();
-    }
-  }
-
-  return (
-    <Card>
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-bold text-accent">Riddle #{riddle.position}</span>
-        <span
-          className={`px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wider ${
-            riddle.status === 'correct'
-              ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800'
-              : riddle.status === 'wrong'
-              ? 'bg-red-950/60 text-red-400 border border-red-800'
-              : 'bg-slate-800 text-slate-400 border border-slate-700'
-          }`}
-        >
-          {riddle.status === 'correct' ? 'Solved' : riddle.status === 'wrong' ? 'Wrong' : 'Open'}
-        </span>
-      </div>
-
-      <p className="text-base text-slate-100 mt-3 whitespace-pre-line leading-relaxed">{riddle.text}</p>
-
-      {/* Options */}
-      <div className="mt-4 flex flex-col gap-2">
-        {riddle.options.map((opt) => {
-          const isSelected = choice === opt.id;
+      {/* Number Strip */}
+      <div className="flex items-center gap-1.5 overflow-x-auto py-1 px-0.5 no-scrollbar">
+        {riddles.map((r, idx) => {
+          const isCurr = idx === safeIndex;
+          const isSub = r.status === 'submitted';
           return (
-            <label
-              key={opt.id}
-              className={`flex items-start gap-3 rounded-lg border p-3 text-sm cursor-pointer transition-colors ${
-                done
-                  ? 'border-slate-800 bg-slate-900/40 text-slate-400 cursor-not-allowed'
-                  : isSelected
-                  ? 'border-accent bg-amber-500/10 text-slate-100'
-                  : 'border-slate-700 bg-slate-900 text-slate-200 hover:border-slate-600'
+            <button
+              key={r.id}
+              onClick={() => setCurrentIndex(idx)}
+              className={`min-w-[34px] h-8 px-2 rounded-lg text-xs font-semibold flex items-center justify-center transition-all shrink-0 ${
+                isCurr
+                  ? 'border-2 border-accent text-accent bg-accent/15'
+                  : isSub
+                  ? 'bg-slate-700 text-slate-200 border border-slate-600'
+                  : 'bg-slate-900 text-slate-400 border border-slate-800 hover:border-slate-700'
               }`}
+              title={`Riddle ${idx + 1}${isSub ? ' (Answered)' : ''}`}
             >
-              <input
-                type="radio"
-                name={`riddle-${riddle.id}`}
-                disabled={done || !canSubmit}
-                checked={isSelected}
-                onChange={() => setChoice(opt.id)}
-                className="mt-0.5 accent-amber-500 disabled:opacity-40"
-              />
-              <span className="leading-snug">{opt.text}</span>
-            </label>
+              {idx + 1}
+            </button>
           );
         })}
       </div>
 
-      {/* Action / Feedback */}
-      {!done && canSubmit && (
-        <button
-          onClick={handleSubmit}
-          disabled={!choice || busy}
-          className="mt-4 w-full py-3 rounded-xl bg-accent text-slate-950 font-bold text-sm tracking-wide disabled:opacity-40 hover:bg-amber-400 transition-colors"
-        >
-          {busy ? 'Submitting...' : 'Submit Riddle'}
-        </button>
-      )}
-
-      {feedback && (
-        <div
-          className={`mt-3 p-2.5 rounded text-center text-xs font-semibold ${
-            feedback === 'Correct.'
-              ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-800'
-              : 'bg-red-950/60 text-red-300 border border-red-800'
-          }`}
-        >
-          {feedback}
+      {/* Active Question Card */}
+      <Card>
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold text-accent">
+            Riddle #{currentRiddle.position} ({safeIndex + 1} / {total})
+          </span>
+          <span className="px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wider bg-slate-800 text-slate-300 border border-slate-700">
+            {isCurrentSubmitted ? 'Submitted' : 'Open'}
+          </span>
         </div>
-      )}
-    </Card>
+
+        <p className="text-base text-slate-100 mt-3 whitespace-pre-line leading-relaxed">
+          {currentRiddle.text}
+        </p>
+
+        {/* Options */}
+        <div className="mt-4 flex flex-col gap-2">
+          {currentRiddle.options.map((opt) => {
+            const isSelected = selectedChoice === opt.id;
+            return (
+              <label
+                key={opt.id}
+                className={`flex items-start justify-between gap-3 rounded-lg border p-3 text-sm transition-colors ${
+                  isCurrentSubmitted
+                    ? isSelected
+                      ? 'border-slate-600 bg-slate-800 text-slate-200 cursor-not-allowed'
+                      : 'border-slate-800 bg-slate-900/40 text-slate-500 cursor-not-allowed'
+                    : isSelected
+                    ? 'border-accent bg-amber-500/10 text-slate-100 cursor-pointer'
+                    : 'border-slate-700 bg-slate-900 text-slate-200 hover:border-slate-600 cursor-pointer'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <input
+                    type="radio"
+                    name={`riddle-${currentRiddle.id}`}
+                    disabled={isCurrentSubmitted || !canSubmit}
+                    checked={isSelected}
+                    onChange={() => {
+                      if (!isCurrentSubmitted && canSubmit) {
+                        setDraftChoices((prev) => ({ ...prev, [currentRiddle.id]: opt.id }));
+                      }
+                    }}
+                    className="mt-0.5 accent-amber-500 disabled:opacity-40"
+                  />
+                  <span className="leading-snug">{opt.text}</span>
+                </div>
+                {isCurrentSubmitted && isSelected && (
+                  <span className="text-[11px] font-medium text-slate-400 shrink-0">Your answer</span>
+                )}
+              </label>
+            );
+          })}
+        </div>
+
+        {/* Action / Feedback */}
+        {!isCurrentSubmitted && canSubmit && (
+          <button
+            onClick={handleSubmit}
+            disabled={!selectedChoice || busy}
+            className="mt-4 w-full py-3 rounded-xl bg-accent text-slate-950 font-bold text-sm tracking-wide disabled:opacity-40 hover:bg-amber-400 transition-colors"
+          >
+            {busy ? 'Submitting...' : 'Submit Riddle'}
+          </button>
+        )}
+
+        {(isCurrentSubmitted || feedback[currentRiddle.id]) && (
+          <div className="mt-3 p-2.5 rounded text-center text-xs font-semibold bg-slate-800 text-slate-200 border border-slate-700">
+            {feedback[currentRiddle.id] || 'Answer submitted'}
+          </div>
+        )}
+
+        {/* Navigation Buttons */}
+        <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between gap-3">
+          <button
+            onClick={() => setCurrentIndex((prev) => Math.max(0, prev - 1))}
+            disabled={safeIndex === 0}
+            className="flex-1 py-2 px-3 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 text-xs font-semibold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-700 transition-colors"
+          >
+            Previous
+          </button>
+          <span className="text-xs text-slate-400 font-medium">
+            {safeIndex + 1} / {total}
+          </span>
+          <button
+            onClick={() => setCurrentIndex((prev) => Math.min(total - 1, prev + 1))}
+            disabled={safeIndex >= total - 1}
+            className="flex-1 py-2 px-3 rounded-lg bg-slate-800 text-slate-200 border border-slate-700 text-xs font-semibold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-700 transition-colors"
+          >
+            Next
+          </button>
+        </div>
+      </Card>
+    </div>
   );
 }
 

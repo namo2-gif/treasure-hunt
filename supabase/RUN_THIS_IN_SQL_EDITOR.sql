@@ -1319,6 +1319,15 @@ begin
 end;
 $$;
 
+-- Helper function points_per_question (handles both smallint and int)
+create or replace function points_per_question(p_n smallint) returns int language sql stable as $$
+  select floor(setting_int('run_total_points', 120)::numeric / p_n)::int;
+$$;
+
+create or replace function points_per_question(p_n int) returns int language sql stable as $$
+  select floor(setting_int('run_total_points', 120)::numeric / p_n)::int;
+$$;
+
 -- 2. submit_answer: R1 branch updated for blind Round 1
 create or replace function submit_answer(p_student text, p_kind text, p_key int, p_option text, p_request uuid)
 returns jsonb language plpgsql as $$
@@ -1483,7 +1492,7 @@ begin
     end if;
 
     v_max_tries := setting_int('tries_r2', 2);
-    v_full := points_per_question(v_team.n);
+    v_full := floor(setting_int('run_total_points', 120)::numeric / v_team.n);
 
     select count(*), coalesce(bool_or(correct), false)
       into v_cnt, v_any_correct

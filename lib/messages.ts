@@ -20,6 +20,7 @@ export const ERROR_MESSAGES: Record<string, string> = {
   INVALID_OPTION: 'Choose one of the options.',
   NOT_ELIGIBLE: 'Your team is not in this round.',
   CONTENT_MISSING: 'Something is not set up. Tell an organiser.',
+  ALREADY_SUBMITTED: 'This riddle is already submitted.',
   UNAUTHORIZED: 'You must be logged in to access this.',
   DUPLICATE_REQUEST: 'Something went wrong. Reload and try again.',
   RPC_ERROR: 'Something is not set up. Tell an organiser.',

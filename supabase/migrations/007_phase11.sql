@@ -47,6 +47,15 @@ begin
 end;
 $$;
 
+-- Helper function points_per_question (handles both smallint and int)
+create or replace function points_per_question(p_n smallint) returns int language sql stable as $$
+  select floor(setting_int('run_total_points', 120)::numeric / p_n)::int;
+$$;
+
+create or replace function points_per_question(p_n int) returns int language sql stable as $$
+  select floor(setting_int('run_total_points', 120)::numeric / p_n)::int;
+$$;
+
 -- 2. submit_answer: R1 branch updated for blind Round 1
 create or replace function submit_answer(p_student text, p_kind text, p_key int, p_option text, p_request uuid)
 returns jsonb language plpgsql as $$
@@ -211,7 +220,7 @@ begin
     end if;
 
     v_max_tries := setting_int('tries_r2', 2);
-    v_full := points_per_question(v_team.n);
+    v_full := floor(setting_int('run_total_points', 120)::numeric / v_team.n);
 
     select count(*), coalesce(bool_or(correct), false)
       into v_cnt, v_any_correct
@@ -461,7 +470,7 @@ declare
   v_teaser_open boolean;
   v_riddles jsonb := '[]'::jsonb;
   v_r3t record;
-  v_r3z record;
+  v_r3_find_riddle text;          -- FIX: was "v_r3z record"; scalar = null by default, avoids 55000
   v_r3_boxes jsonb := '[]'::jsonb;
   v_r3_config record;
   v_r3_result record;
@@ -540,8 +549,9 @@ begin
 
   -- Round 3 data assembly
   select * into v_r3t from r3_team where team_id = v_team.id;
+  -- FIX: only select the one column we need; scalar is null when no zone is assigned yet
   if v_r3t.zone is not null then
-    select * into v_r3z from r3_zones where id = v_r3t.zone;
+    select find_riddle into v_r3_find_riddle from r3_zones where id = v_r3t.zone;
   end if;
 
   select * into v_r3_config from r3_config where id = 1;
@@ -593,7 +603,7 @@ begin
     'riddles', v_riddles,
     'r3', jsonb_build_object(
       'hasScanned', v_r3t.scanned_ms is not null,
-      'findRiddle', case when v_team.r3_eligible and v_r3z.find_riddle is not null then v_r3z.find_riddle else null end,
+      'findRiddle', case when v_team.r3_eligible then v_r3_find_riddle else null end,  -- FIX: no v_r3z
       'hint', v_r3_config.hint_text,
       'boxes', v_r3_boxes,
       'result', case when v_r3_result.reason is not null then jsonb_build_object(
@@ -610,6 +620,12 @@ end;
 $$;
 
 -- Permissions
+revoke execute on function points_per_question(smallint) from public, anon, authenticated;
+grant execute on function points_per_question(smallint) to service_role;
+
+revoke execute on function points_per_question(int) from public, anon, authenticated;
+grant execute on function points_per_question(int) to service_role;
+
 revoke execute on function submit_answer(text, text, int, text, uuid) from public, anon, authenticated;
 grant execute on function submit_answer(text, text, int, text, uuid) to service_role;
 

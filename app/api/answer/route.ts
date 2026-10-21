@@ -23,5 +23,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, code: 'VALIDATION_ERROR', message: 'Invalid request' }, { status: 400 });
   }
   const { kind, key, optionId, requestId } = parsed.data;
-  return NextResponse.json(await submitAnswer(db, session.sid, kind, key, optionId, requestId));
+  const res = await submitAnswer(db, session.sid, kind, key, optionId, requestId);
+  if (kind === 'r1' && res.ok) {
+    return NextResponse.json({ ok: true, status: 'recorded', runFinished: false });
+  }
+  return NextResponse.json(res);
 }

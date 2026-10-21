@@ -40,7 +40,8 @@ export interface RiddleDTO {
   position: number;
   text: string;
   options: OptionDTO[];
-  status: 'open' | 'correct' | 'wrong';
+  status: 'open' | 'submitted';
+  chosenOptionId?: string;
 }
 
 export interface TeaserPieceDTO {
@@ -83,6 +84,8 @@ export interface StateDTO {
   me: PlayerMeDTO;
   screen: ScreenType;
   deadlineEventMs?: number;
+  submittedCount?: number;
+  total?: number;
   // Screen-specific payloads
   riddles?: RiddleDTO[];
   canSubmit?: boolean;
@@ -90,7 +93,6 @@ export interface StateDTO {
   message?: string;
   piecesHeld?: TeaserPieceDTO[];
   registered?: number;
-  total?: number;
   canAnswer?: boolean;
   mine?: MemberQuestionDTO[];
   board?: CaptainBoardQuestionDTO[];
@@ -120,27 +122,24 @@ export function mapPlayerMe(
 }
 
 /**
- * Safe mapper for Riddles (options shuffled deterministically, correct_option_id stripped)
+ * Safe mapper for Riddles (options shuffled deterministically, correct_option_id stripped, blind status)
  */
 export function mapRiddleDTO(
   riddle: { id: number; position: number; text: string; options: OptionDTO[] },
   teamId: string,
-  attempt?: { correct: boolean } | null
+  attempt?: { try_no?: number; option_id?: string; correct?: boolean } | null
 ): RiddleDTO {
   const seed = `${teamId}:r1:${riddle.id}`;
   const shuffledOptions = seededShuffle(riddle.options, seed);
-
-  let status: 'open' | 'correct' | 'wrong' = 'open';
-  if (attempt) {
-    status = attempt.correct ? 'correct' : 'wrong';
-  }
+  const isSubmitted = !!attempt;
 
   return {
     id: riddle.id,
     position: riddle.position,
     text: riddle.text,
     options: shuffledOptions,
-    status,
+    status: isSubmitted ? 'submitted' : 'open',
+    chosenOptionId: attempt?.option_id ?? undefined,
   };
 }
 
