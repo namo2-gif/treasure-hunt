@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { CaptainBoardQuestionDTO, MemberQuestionDTO, RiddleDTO, StateDTO } from '@/lib/dto';
 import { ANSWER_FEEDBACK, getErrorMessage } from '@/lib/messages';
+import QrBoard from '@/components/QrBoard';
 
 type Api = { ok: boolean; code?: string; message?: string; status?: string; [k: string]: unknown };
 
@@ -140,6 +141,7 @@ export default function Game() {
       )}
 
       <Screen state={state} remainingS={remainingS} post={post} refresh={refresh} />
+      {['R2_SCAN', 'R2_TEASER', 'R2_QUESTIONS', 'R2_DONE'].includes(state.screen) && <QrBoard />}
     </div>
   );
 }

@@ -182,3 +182,23 @@
 
 - Round 2 questions fixed at 4 per run (migration 008_fixed_4_questions.sql): all teams answer exactly 4 questions regardless of team size (3, 4, or 5). Teaser is unchanged (N pieces for N members). Points per question = floor(run_total_points / 4). For a 3-member team, question 4 has no matching piece_no so it only appears on the captain's board; for a 5-member team, the member with piece_no 5 has no question in 'mine'. The questions table must have at least 4 distinct slots per run (slot 1–4).
 - Round 2 question slots expanded from max 5 to max 10 (migration 009_slot_10.sql + Zod .max(10) in questions route). Content layout: 10 slots × 2 variants = 20 questions per run, 40 total (R1 run + R2 run). Each team still gets exactly 4 questions picked from the 10 slots. Supports ~25-40 teams (100-125 students) comfortably.
+
+## Phase 12: Round 2 QR Locations Floating Panel
+- Files to touch:
+  - lib/dto.ts
+  - lib/qr.ts
+  - app/api/admin/dashboard/route.ts
+  - app/api/qr-board/route.ts
+  - components/QrBoard.tsx
+  - components/Game.tsx
+  - app/page.tsx
+  - tests/qr_board.test.ts
+  - scripts/test-phase12.ts
+  - AGENTS.md
+  - CODEMAP.md
+  - DECISIONS.md
+- Extracted registration counting by QR and run into shared helper `countRegistrationsByRun` in `lib/qr.ts` so admin dashboard and `/api/qr-board` counts are strictly identical.
+- Set QR location numbering in `/api/qr-board` as the 1-based index of active QRs ordered by `id` ascending.
+- Used `localStorage` key `th_qr_board_expanded` to persist expand/collapse state, defaulting to `true` (expanded) on first visit.
+- Structured `QrBoard.tsx` with a `fixed top-right` container (below safe-area inset), icon always at top, expanded card drops directly below the icon (`mt-2`); the container uses `pointer-events-none` with interactive children re-enabling pointer events. Added `pt-20` to player page container in `app/page.tsx` so the header/countdown are never covered by the icon.
+- Implemented polling lifecycle in `QrBoard.tsx` (initial fetch, then every 5s ±1s jitter only when expanded and document is visible; stops polling on collapse, tab hide, or unmount; hides component on domain rejection NOT_IN_ROUND or WRONG_PHASE).

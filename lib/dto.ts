@@ -175,4 +175,46 @@ export function mapCaptainBoardQuestionDTO(
   };
 }
 
+export interface QrBoardLocationDTO {
+  number: number;
+  name: string;
+  count: number;
+  capacity: number;
+}
+
+export interface QrBoardDTO {
+  ok: true;
+  run: number;
+  locations: QrBoardLocationDTO[];
+}
+
+/**
+ * Safe mapper for Round 2 QR locations board.
+ * Strips tokens, IDs, and internal identifiers. Caps count at capacity.
+ */
+export function mapQrBoardDTO(
+  run: number,
+  qrs: Array<{ id: number; name: string; capacity: number; active?: boolean }>,
+  countsByQrId: Record<number, number>
+): QrBoardDTO {
+  const activeQrs = qrs.filter((q) => q.active !== false);
+  const locations: QrBoardLocationDTO[] = activeQrs.map((qr, index) => {
+    const rawCount = countsByQrId[qr.id] ?? 0;
+    const count = Math.min(Math.max(0, rawCount), qr.capacity);
+    return {
+      number: index + 1,
+      name: qr.name,
+      count,
+      capacity: qr.capacity,
+    };
+  });
+
+  return {
+    ok: true,
+    run,
+    locations,
+  };
+}
+
+
 

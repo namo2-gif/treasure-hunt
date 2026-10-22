@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getAdminSession } from '@/lib/session';
 import { getEventStateAndClock } from '@/lib/event-service';
+import { countRegistrationsByRun } from '@/lib/qr';
 
 export async function GET() {
   const session = await getAdminSession();
@@ -58,20 +59,7 @@ export async function GET() {
     .from('registrations')
     .select('qr_id, run');
 
-  const qrCounts: Record<string, { run1: number; run2: number }> = {};
-  if (qrs) {
-    for (const qr of qrs) {
-      qrCounts[qr.id] = { run1: 0, run2: 0 };
-    }
-  }
-  if (registrations) {
-    for (const reg of registrations) {
-      if (qrCounts[reg.qr_id]) {
-        if (reg.run === 1) qrCounts[reg.qr_id].run1++;
-        if (reg.run === 2) qrCounts[reg.qr_id].run2++;
-      }
-    }
-  }
+  const qrCounts = countRegistrationsByRun(registrations);
 
   // Count qualified teams
   const qualifiedCount = teams?.filter(t => t.qualified && !t.withdrawn).length || 0;
